@@ -1,7 +1,4 @@
 <?php
-// Remove session_start() from here since it's already called in index.php
-// session_start(); // REMOVE THIS LINE
-
 // Determine current page for active link highlighting
 $currentPage = basename($_SERVER['PHP_SELF']);
 ?>
@@ -15,13 +12,24 @@ $currentPage = basename($_SERVER['PHP_SELF']);
     <div class="collapse navbar-collapse" id="navbarSupportedContent">
         <ul class="navbar-nav mr-auto">
             <li class="nav-item <?= ($currentPage == 'index.php') ? 'active' : '' ?>">
-                <a class="nav-link" href="./index.php">Home</a>
+                <a class="nav-link" href="./index.php">
+                    <i class="fas fa-home mr-1"></i> Dashboard
+                </a>
+            </li>
+            <li class="nav-item <?= ($currentPage == 'attendance.php') ? 'active' : '' ?>">
+                <a class="nav-link" href="./attendance.php">
+                    <i class="fas fa-qrcode mr-1"></i> Attendance Scanner
+                </a>
             </li>
             <li class="nav-item <?= ($currentPage == 'masterlist.php') ? 'active' : '' ?>">
-                <a class="nav-link" href="./masterlist.php">List of Students</a>
+                <a class="nav-link" href="./masterlist.php">
+                    <i class="fas fa-user-graduate mr-1"></i> List of Students
+                </a>
             </li>
             <li class="nav-item <?= ($currentPage == 'archive-manager.php') ? 'active' : '' ?>">
-                <a class="nav-link" href="./archive-manager.php">Archive</a>
+                <a class="nav-link" href="./archive-manager.php">
+                    <i class="fas fa-archive mr-1"></i> Archive
+                </a>
             </li>
         </ul>
         <ul class="navbar-nav ml-auto">

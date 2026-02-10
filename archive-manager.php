@@ -1,339 +1,332 @@
 <?php
-// Include database connection
-require_once 'conn/conn.php';
+session_start();
+
+if (!isset($_SESSION['user_id'])) {
+    header("Location: login.php");
+    exit();
+}
+
+include ('./conn/conn.php');
 ?>
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Attendance Archive Manager</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Archive Manager - QR Attendance</title>
+    
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Source+Sans+Pro:300,400,400i,700&display=fallback">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/admin-lte@3.2/dist/css/adminlte.min.css">
+    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap4.min.css">
+    
     <style>
-        .archive-card {
-            border: 1px solid #dee2e6;
-            border-radius: 0.375rem;
-            transition: all 0.3s ease;
+        .archive-stats-card {
+            border-radius: 10px;
+            color: white;
+            padding: 20px;
+            margin-bottom: 20px;
+            text-align: center;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
         }
-        .archive-card:hover {
-            box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+        
+        .archive-stats-icon {
+            font-size: 2.5rem;
+            opacity: 0.9;
+            margin-bottom: 10px;
         }
+        
+        .archive-stats-number {
+            font-size: 2rem;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+        
+        .archive-table {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        
         .loading {
             display: none;
         }
-        .stats-card {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-        }
-        .stats-card-secondary {
-            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-            color: white;
-        }
     </style>
 </head>
-<body>
+<body class="hold-transition sidebar-mini layout-fixed">
+<div class="wrapper">
 
-<?php
-// Include database connection
-require_once 'conn/conn.php';
-?>
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Attendance Archive Manager</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/css/bootstrap.min.css" rel="stylesheet" />
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css" />
-    <style>
-        .navbar-custom {
-            background-color: #343a40;
-        }
-        .navbar-custom .navbar-brand,
-        .navbar-custom .nav-link {
-            color: #f8f9fa;
-        }
-        .navbar-custom .nav-link.active {
-            font-weight: bold;
-            color: #ffc107;
-        }
-    </style>
-</head>
-<body>
-<nav class="navbar navbar-expand-lg navbar-custom">
-    <a class="navbar-brand ml-4" href="#">QR Code Attendance System</a>
-    <button
-        class="navbar-toggler"
-        type="button"
-        data-toggle="collapse"
-        data-target="#navbarSupportedContent"
-        aria-controls="navbarSupportedContent"
-        aria-expanded="false"
-        aria-label="Toggle navigation"
-    >
-        <span class="navbar-toggler-icon"></span>
-    </button>
-
-    <div class="collapse navbar-collapse" id="navbarSupportedContent">
-        <ul class="navbar-nav mr-auto">
-            <li class="nav-item <?= basename($_SERVER['PHP_SELF']) == 'index.php' ? 'active' : '' ?>">
-                <a class="nav-link" href="./index.php">Home</a>
-            </li>
-            <li class="nav-item <?= basename($_SERVER['PHP_SELF']) == 'masterlist.php' ? 'active' : '' ?>">
-                <a class="nav-link" href="./masterlist.php">List of Students</a>
-            </li>
-            <li class="nav-item <?= basename($_SERVER['PHP_SELF']) == 'archive-manager.php' ? 'active' : '' ?>">
-                <a class="nav-link" href="./archive-manager.php">Archive</a>
+    <!-- Navbar -->
+    <nav class="main-header navbar navbar-expand navbar-white navbar-light">
+        <ul class="navbar-nav">
+            <li class="nav-item">
+                <a class="nav-link" data-widget="pushmenu" href="#" role="button"><i class="fas fa-bars"></i></a>
             </li>
         </ul>
-        <ul class="navbar-nav ml-auto">
-            <li class="nav-item mr-3">
-                <a class="nav-link" href="#">Logout</a>
-            </li>
-        </ul>
-    </div>
-</nav>
-<div class="container-fluid py-4">
-        <div class="row">
-            <div class="col-12">
-                <h1 class="h3 mb-4 text-center">
-                    <i class="bi bi-archive-fill"></i> Attendance Archive Manager
-                </h1>
-            </div>
-        </div>
+    </nav>
 
-        <!-- Summary Cards -->
-        <div class="row mb-4">
-            <div class="col-md-3">
-                <div class="card stats-card">
-                    <div class="card-body text-center">
-                        <i class="bi bi-archive fs-1"></i>
-                        <h3 class="card-title" id="totalArchived">0</h3>
-                        <p class="card-text">Total Archived</p>
+    <!-- Sidebar -->
+    <?php include 'adminlte-sidebar.php'; ?>
+
+    <!-- Content Wrapper -->
+    <div class="content-wrapper">
+        <!-- Content Header -->
+        <div class="content-header">
+            <div class="container-fluid">
+                <div class="row mb-2">
+                    <div class="col-sm-6">
+                        <h1 class="m-0">Archive Manager</h1>
                     </div>
-                </div>
-            </div>
-            <div class="col-md-3">
-                <div class="card stats-card-secondary">
-                    <div class="card-body text-center">
-                        <i class="bi bi-calendar-check fs-1"></i>
-                        <h3 class="card-title" id="activeRecords">0</h3>
-                        <p class="card-text">Active Records</p>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-3">
-                <div class="card bg-info text-white">
-                    <div class="card-body text-center">
-                        <i class="bi bi-calendar-range fs-1"></i>
-                        <h3 class="card-title" id="uniqueDays">0</h3>
-                        <p class="card-text">Unique Days</p>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-3">
-                <div class="card bg-warning text-white">
-                    <div class="card-body text-center">
-                        <i class="bi bi-arrow-down-up fs-1"></i>
-                        <h3 class="card-title" id="latestDate">-</h3>
-                        <p class="card-text">Latest Archive</p>
+                    <div class="col-sm-6">
+                        <ol class="breadcrumb float-sm-right">
+                            <li class="breadcrumb-item"><a href="index.php">Home</a></li>
+                            <li class="breadcrumb-item active">Archive</li>
+                        </ol>
                     </div>
                 </div>
             </div>
         </div>
 
-        <div class="row">
-            <!-- Archive Section -->
-            <div class="col-md-6">
-                <div class="card archive-card">
-                    <div class="card-header bg-primary text-white">
-                        <h5 class="mb-0">
-                            <i class="bi bi-box-arrow-in-down"></i> Archive Attendance
-                        </h5>
-                    </div>
-                    <div class="card-body">
-                        <form id="archiveForm">
-                            <div class="mb-3">
-                                <label for="archiveDate" class="form-label">Archive records up to:</label>
-                                <input type="date" class="form-control" id="archiveDate" name="archive_date" 
-                                       value="<?php echo date('Y-m-d', strtotime('-1 day')); ?>" required>
-                                <small class="form-text text-muted">
-                                    All attendance records on or before this date will be archived
-                                </small>
+        <!-- Main Content -->
+        <section class="content">
+            <div class="container-fluid">
+                <!-- Stats Cards -->
+                <div class="row mb-4">
+                    <div class="col-lg-3 col-md-6">
+                        <div class="archive-stats-card bg-gradient-primary">
+                            <div class="archive-stats-icon">
+                                <i class="fas fa-archive"></i>
                             </div>
-                            <button type="submit" class="btn btn-primary w-100" id="archiveBtn">
-                                <span class="loading spinner-border spinner-border-sm me-2" role="status"></span>
-                                <i class="bi bi-archive"></i> Archive Records
-                            </button>
-                        </form>
-                        <div id="archiveResult" class="mt-3"></div>
+                            <div class="archive-stats-number" id="totalArchived">0</div>
+                            <div>Total Archived</div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-lg-3 col-md-6">
+                        <div class="archive-stats-card bg-gradient-success">
+                            <div class="archive-stats-icon">
+                                <i class="fas fa-calendar-check"></i>
+                            </div>
+                            <div class="archive-stats-number" id="activeRecords">0</div>
+                            <div>Active Records</div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-lg-3 col-md-6">
+                        <div class="archive-stats-card bg-gradient-info">
+                            <div class="archive-stats-icon">
+                                <i class="fas fa-calendar-range"></i>
+                            </div>
+                            <div class="archive-stats-number" id="uniqueDays">0</div>
+                            <div>Unique Days</div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-lg-3 col-md-6">
+                        <div class="archive-stats-card bg-gradient-warning">
+                            <div class="archive-stats-icon">
+                                <i class="fas fa-arrow-down-up"></i>
+                            </div>
+                            <div class="archive-stats-number" id="latestDate">-</div>
+                            <div>Latest Archive</div>
+                        </div>
                     </div>
                 </div>
-            </div>
 
-            <!-- Download Section -->
-            <div class="col-md-6">
-                <div class="card archive-card">
-                    <div class="card-header bg-success text-white">
-                        <h5 class="mb-0">
-                            <i class="bi bi-download"></i> Download Archived Records
-                        </h5>
+                <!-- Archive Actions -->
+                <div class="row">
+                    <!-- Archive Section -->
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header bg-gradient-primary text-white">
+                                <h3 class="card-title">
+                                    <i class="fas fa-box-arrow-in-down mr-2"></i> Archive Attendance
+                                </h3>
+                            </div>
+                            <div class="card-body">
+                                <form id="archiveForm">
+                                    <div class="form-group">
+                                        <label for="archiveDate">Archive records up to:</label>
+                                        <input type="date" class="form-control" id="archiveDate" name="archive_date" 
+                                               value="<?php echo date('Y-m-d', strtotime('-1 day')); ?>" required>
+                                        <small class="form-text text-muted">
+                                            All attendance records on or before this date will be archived
+                                        </small>
+                                    </div>
+                                    <button type="submit" class="btn btn-primary btn-block" id="archiveBtn">
+                                        <span class="loading spinner-border spinner-border-sm me-2" role="status"></span>
+                                        <i class="fas fa-archive mr-2"></i> Archive Records
+                                    </button>
+                                </form>
+                                <div id="archiveResult" class="mt-3"></div>
+                            </div>
+                        </div>
                     </div>
-                    <div class="card-body">
-                        <form id="downloadForm">
-                            <div class="mb-3">
-                                <label for="startDate" class="form-label">Start Date:</label>
-                                <input type="date" class="form-control" id="startDate" name="start_date" 
-                                       value="<?php echo date('Y-m-d', strtotime('-7 days')); ?>" required>
+
+                    <!-- Download Section -->
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header bg-gradient-success text-white">
+                                <h3 class="card-title">
+                                    <i class="fas fa-download mr-2"></i> Download Archived Records
+                                </h3>
                             </div>
-                            <div class="mb-3">
-                                <label for="endDate" class="form-label">End Date:</label>
-                                <input type="date" class="form-control" id="endDate" name="end_date" 
-                                       value="<?php echo date('Y-m-d'); ?>" required>
+                            <div class="card-body">
+                                <form id="downloadForm">
+                                    <div class="form-group">
+                                        <label for="startDate">Start Date:</label>
+                                        <input type="date" class="form-control" id="startDate" name="start_date" 
+                                               value="<?php echo date('Y-m-d', strtotime('-7 days')); ?>" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="endDate">End Date:</label>
+                                        <input type="date" class="form-control" id="endDate" name="end_date" 
+                                               value="<?php echo date('Y-m-d'); ?>" required>
+                                    </div>
+                                    <button type="button" class="btn btn-success btn-block" id="downloadBtn">
+                                        <i class="fas fa-file-excel mr-2"></i> Download Excel
+                                    </button>
+                                </form>
                             </div>
-                            <button type="button" class="btn btn-success w-100" id="downloadBtn">
-                                <i class="bi bi-file-earmark-excel"></i> Download Excel
-                            </button>
-                        </form>
+                        </div>
                     </div>
                 </div>
-            </div>
-        </div>
 
-        <!-- Daily Breakdown -->
-        <div class="row mt-4">
-            <div class="col-12">
-                <div class="card">
-                    <div class="card-header bg-info text-white">
-                        <h5 class="mb-0">
-                            <i class="bi bi-calendar3"></i> Daily Archive Summary
-                        </h5>
-                    </div>
-                    <div class="card-body">
-                        <div class="table-responsive">
-                            <table class="table table-striped" id="dailyTable">
-                                <thead>
-                                    <tr>
-                                        <th>Date</th>
-                                        <th>Records Archived</th>
-                                        <th>Action</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="dailyBreakdown">
-                                    <!-- Data will be loaded via AJAX -->
-                                </tbody>
-                            </table>
+                <!-- Daily Breakdown -->
+                <div class="row mt-4">
+                    <div class="col-12">
+                        <div class="card">
+                            <div class="card-header bg-gradient-info text-white">
+                                <h3 class="card-title">
+                                    <i class="fas fa-calendar3 mr-2"></i> Daily Archive Summary
+                                </h3>
+                            </div>
+                            <div class="card-body p-0">
+                                <div class="table-responsive archive-table">
+                                    <table class="table table-hover">
+                                        <thead>
+                                            <tr>
+                                                <th>Date</th>
+                                                <th>Records Archived</th>
+                                                <th>Action</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="dailyBreakdown">
+                                            <!-- Data will be loaded via AJAX -->
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
-        </div>
+        </section>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script>
-        // Load archive summary on page load
-        document.addEventListener('DOMContentLoaded', function() {
-            loadArchiveSummary();
-        });
+    <!-- Footer -->
+    <footer class="main-footer">
+        <strong>QR Code Attendance System &copy; <?php echo date('Y'); ?></strong>
+        All rights reserved.
+    </footer>
+</div>
 
-        // Load archive summary
-        function loadArchiveSummary() {
-            fetch('endpoint/get-archive-summary.php')
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        document.getElementById('totalArchived').textContent = data.summary.total_archived || 0;
-                        document.getElementById('activeRecords').textContent = data.summary.active_records || 0;
-                        document.getElementById('uniqueDays').textContent = data.summary.unique_days || 0;
-                        document.getElementById('latestDate').textContent = data.summary.latest_date || '-';
-                        
-                        // Load daily breakdown
-                        const dailyBreakdown = document.getElementById('dailyBreakdown');
-                        dailyBreakdown.innerHTML = '';
-                        
-                        if (data.summary.daily_breakdown && data.summary.daily_breakdown.length > 0) {
-                            data.summary.daily_breakdown.forEach(day => {
-                                const row = document.createElement('tr');
-                                row.innerHTML = `
-                                    <td>${day.attendance_date}</td>
-                                    <td>${day.record_count}</td>
-                                    <td>
-                                        <button class="btn btn-sm btn-primary" onclick="downloadSingleDay('${day.attendance_date}')">
-                                            <i class="bi bi-download"></i>
-                                        </button>
-                                    </td>
-                                `;
-                                dailyBreakdown.appendChild(row);
-                            });
-                        }
-                    }
-                })
-                .catch(error => {
-                    console.error('Error loading archive summary:', error);
-                });
-        }
+<!-- Scripts -->
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/admin-lte@3.2/dist/js/adminlte.min.js"></script>
 
-        // Archive attendance records
-        document.getElementById('archiveForm').addEventListener('submit', function(e) {
-            e.preventDefault();
-            
-            const archiveBtn = document.getElementById('archiveBtn');
-            const loading = archiveBtn.querySelector('.loading');
-            const archiveDate = document.getElementById('archiveDate').value;
-            
-            // Show loading
-            loading.style.display = 'inline-block';
-            archiveBtn.disabled = true;
-            
-            fetch('endpoint/archive-attendance.php', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    archive_date: archiveDate
-                })
-            })
-            .then(response => response.json())
-            .then(data => {
-                const resultDiv = document.getElementById('archiveResult');
-                if (data.success) {
-                    resultDiv.innerHTML = `<div class="alert alert-success">${data.message}</div>`;
-                    loadArchiveSummary(); // Refresh summary
-                } else {
-                    resultDiv.innerHTML = `<div class="alert alert-danger">${data.message}</div>`;
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    loadArchiveSummary();
+});
+
+function loadArchiveSummary() {
+    fetch('endpoint/get-archive-summary.php')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                document.getElementById('totalArchived').textContent = data.summary.total_archived || 0;
+                document.getElementById('activeRecords').textContent = data.summary.active_records || 0;
+                document.getElementById('uniqueDays').textContent = data.summary.unique_days || 0;
+                document.getElementById('latestDate').textContent = data.summary.latest_date || '-';
+                
+                const dailyBreakdown = document.getElementById('dailyBreakdown');
+                dailyBreakdown.innerHTML = '';
+                
+                if (data.summary.daily_breakdown && data.summary.daily_breakdown.length > 0) {
+                    data.summary.daily_breakdown.forEach(day => {
+                        const row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td>${day.attendance_date}</td>
+                            <td>${day.record_count}</td>
+                            <td>
+                                <button class="btn btn-sm btn-primary" onclick="downloadSingleDay('${day.attendance_date}')">
+                                    <i class="fas fa-download"></i> Download
+                                </button>
+                            </td>
+                        `;
+                        dailyBreakdown.appendChild(row);
+                    });
                 }
-            })
-            .catch(error => {
-                document.getElementById('archiveResult').innerHTML = 
-                    `<div class="alert alert-danger">Error: ${error.message}</div>`;
-            })
-            .finally(() => {
-                loading.style.display = 'none';
-                archiveBtn.disabled = false;
-            });
-        });
-
-        // Download archived records
-        document.getElementById('downloadBtn').addEventListener('click', function() {
-            const startDate = document.getElementById('startDate').value;
-            const endDate = document.getElementById('endDate').value;
-            
-            if (startDate && endDate) {
-                window.location.href = `endpoint/download-archived-attendance.php?start_date=${startDate}&end_date=${endDate}`;
             }
+        })
+        .catch(error => {
+            console.error('Error loading archive summary:', error);
         });
+}
 
-        // Download single day
-        function downloadSingleDay(date) {
-            window.location.href = `endpoint/download-archived-attendance.php?start_date=${date}&end_date=${date}`;
+document.getElementById('archiveForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const archiveBtn = document.getElementById('archiveBtn');
+    const loading = archiveBtn.querySelector('.loading');
+    const archiveDate = document.getElementById('archiveDate').value;
+    
+    loading.style.display = 'inline-block';
+    archiveBtn.disabled = true;
+    
+    fetch('endpoint/archive-attendance.php', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            archive_date: archiveDate
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        const resultDiv = document.getElementById('archiveResult');
+        if (data.success) {
+            resultDiv.innerHTML = `<div class="alert alert-success">${data.message}</div>`;
+            loadArchiveSummary();
+        } else {
+            resultDiv.innerHTML = `<div class="alert alert-danger">${data.message}</div>`;
         }
-    </script>
+    })
+    .catch(error => {
+        document.getElementById('archiveResult').innerHTML = 
+            `<div class="alert alert-danger">Error: ${error.message}</div>`;
+    })
+    .finally(() => {
+        loading.style.display = 'none';
+        archiveBtn.disabled = false;
+    });
+});
+
+document.getElementById('downloadBtn').addEventListener('click', function() {
+    const startDate = document.getElementById('startDate').value;
+    const endDate = document.getElementById('endDate').value;
+    
+    if (startDate && endDate) {
+        window.location.href = `endpoint/download-archived-attendance.php?start_date=${startDate}&end_date=${endDate}`;
+    }
+});
+
+function downloadSingleDay(date) {
+    window.location.href = `endpoint/download-archived-attendance.php?start_date=${date}&end_date=${date}`;
+}
+</script>
 </body>
 </html>
-<?php
-// Close connection
-$conn = null;
-?>
