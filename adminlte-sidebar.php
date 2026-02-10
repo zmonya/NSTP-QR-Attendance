@@ -82,12 +82,7 @@ $currentPage = basename($_SERVER['PHP_SELF']);
                         </p>
                     </a>
                     <ul class="nav nav-treeview">
-                        <li class="nav-item">
-                            <a href="#" class="nav-link <?= ($currentPage == 'attendance-records.php') ? 'active' : '' ?>">
-                                <i class="far fa-circle nav-icon"></i>
-                                <p>View Records</p>
-                            </a>
-                        </li>
+                      
                         <li class="nav-item">
                             <a href="archive-manager.php" class="nav-link <?= ($currentPage == 'archive-manager.php') ? 'active' : '' ?>">
                                 <i class="far fa-circle nav-icon"></i>
@@ -98,12 +93,7 @@ $currentPage = basename($_SERVER['PHP_SELF']);
                 </li>
 
                 <!-- Reports -->
-                <li class="nav-item">
-                    <a href="reports.php" class="nav-link <?= ($currentPage == 'reports.php') ? 'active' : '' ?>">
-                        <i class="nav-icon fas fa-chart-bar"></i>
-                        <p>Reports & Analytics</p>
-                    </a>
-                </li>
+               
 
                 <!-- Settings -->
                 <li class="nav-item <?= (in_array($currentPage, ['settings.php', 'admin-management.php'])) ? 'menu-open' : '' ?>">
@@ -115,12 +105,6 @@ $currentPage = basename($_SERVER['PHP_SELF']);
                         </p>
                     </a>
                     <ul class="nav nav-treeview">
-                        <li class="nav-item">
-                            <a href="settings.php" class="nav-link <?= ($currentPage == 'settings.php') ? 'active' : '' ?>">
-                                <i class="far fa-circle nav-icon"></i>
-                                <p>System Settings</p>
-                            </a>
-                        </li>
                         
                         <?php if (isset($_SESSION['role']) && $_SESSION['role'] === 'super_admin'): ?>
                         <li class="nav-item">

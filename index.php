@@ -10,33 +10,94 @@ date_default_timezone_set('Asia/Manila');
 include ('./conn/conn.php');
 
 $today = date('Y-m-d');
+$currentUserID = $_SESSION['user_id'];
+$currentUserRole = $_SESSION['role'] ?? 'admin';
 
-// Get statistics
-$stmt = $conn->prepare("SELECT COUNT(*) as total FROM tbl_student");
-$stmt->execute();
-$totalStudents = $stmt->fetchColumn();
+// Get statistics with role-based filtering
+if ($currentUserRole === 'super_admin') {
+    // Super Admin: See all records
+    $stmt = $conn->prepare("SELECT COUNT(*) as total FROM tbl_student");
+    $stmt->execute();
+    $totalStudents = $stmt->fetchColumn();
 
-$stmt = $conn->prepare("SELECT COUNT(*) as total FROM tbl_attendance WHERE DATE(time_in) = :today");
-$stmt->execute(['today' => $today]);
-$todayAttendance = $stmt->fetchColumn();
+    $stmt = $conn->prepare("SELECT COUNT(*) as total FROM tbl_attendance WHERE DATE(time_in) = :today");
+    $stmt->execute(['today' => $today]);
+    $todayAttendance = $stmt->fetchColumn();
 
-$stmt = $conn->prepare("SELECT COUNT(*) as total FROM tbl_attendance");
-$stmt->execute();
-$totalAttendance = $stmt->fetchColumn();
+    $stmt = $conn->prepare("SELECT COUNT(*) as total FROM tbl_attendance");
+    $stmt->execute();
+    $totalAttendance = $stmt->fetchColumn();
 
-$stmt = $conn->prepare("SELECT COUNT(*) as total FROM tbl_attendance_archive");
-$stmt->execute();
-$totalArchived = $stmt->fetchColumn();
+    $stmt = $conn->prepare("SELECT COUNT(*) as total FROM tbl_attendance_archive");
+    $stmt->execute();
+    $totalArchived = $stmt->fetchColumn();
 
-$stmt = $conn->prepare("
-    SELECT a.*, s.student_name, s.course_section 
-    FROM tbl_attendance a 
-    LEFT JOIN tbl_student s ON s.tbl_student_id = a.tbl_student_id 
-    ORDER BY a.time_in DESC 
-    LIMIT 8
-");
-$stmt->execute();
-$recent = $stmt->fetchAll();
+    // Recent attendance - all records
+    $stmt = $conn->prepare("
+        SELECT a.*, s.student_name, s.course_section, u.full_name as recorded_by 
+        FROM tbl_attendance a 
+        LEFT JOIN tbl_student s ON s.tbl_student_id = a.tbl_student_id 
+        LEFT JOIN tbl_users u ON u.user_id = s.created_by 
+        ORDER BY a.time_in DESC 
+        LIMIT 8
+    ");
+    $stmt->execute();
+    $recent = $stmt->fetchAll();
+} else {
+    // Regular Admin: See only records they created
+    
+    // Count students created by this admin
+    $stmt = $conn->prepare("
+        SELECT COUNT(DISTINCT s.tbl_student_id) as total 
+        FROM tbl_student s
+        WHERE s.created_by = :user_id
+    ");
+    $stmt->execute(['user_id' => $currentUserID]);
+    $totalStudents = $stmt->fetchColumn();
+
+    // Today's attendance for students created by this admin
+    $stmt = $conn->prepare("
+        SELECT COUNT(*) as total 
+        FROM tbl_attendance a
+        INNER JOIN tbl_student s ON s.tbl_student_id = a.tbl_student_id
+        WHERE DATE(a.time_in) = :today 
+        AND s.created_by = :user_id
+    ");
+    $stmt->execute(['today' => $today, 'user_id' => $currentUserID]);
+    $todayAttendance = $stmt->fetchColumn();
+
+    // All attendance for students created by this admin
+    $stmt = $conn->prepare("
+        SELECT COUNT(*) as total 
+        FROM tbl_attendance a
+        INNER JOIN tbl_student s ON s.tbl_student_id = a.tbl_student_id
+        WHERE s.created_by = :user_id
+    ");
+    $stmt->execute(['user_id' => $currentUserID]);
+    $totalAttendance = $stmt->fetchColumn();
+
+    // Archived records for students created by this admin
+    $stmt = $conn->prepare("
+        SELECT COUNT(*) as total 
+        FROM tbl_attendance_archive a
+        INNER JOIN tbl_student s ON s.tbl_student_id = a.tbl_student_id
+        WHERE s.created_by = :user_id
+    ");
+    $stmt->execute(['user_id' => $currentUserID]);
+    $totalArchived = $stmt->fetchColumn();
+
+    // Recent attendance - only for students created by this admin
+    $stmt = $conn->prepare("
+        SELECT a.*, s.student_name, s.course_section 
+        FROM tbl_attendance a 
+        INNER JOIN tbl_student s ON s.tbl_student_id = a.tbl_student_id 
+        WHERE s.created_by = :user_id 
+        ORDER BY a.time_in DESC 
+        LIMIT 8
+    ");
+    $stmt->execute(['user_id' => $currentUserID]);
+    $recent = $stmt->fetchAll();
+}
 ?>
 
 <!DOCTYPE html>
@@ -69,6 +130,11 @@ $recent = $stmt->fetchAll();
             max-height: 400px;
             overflow-y: auto;
         }
+        .role-badge {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+        }
     </style>
 </head>
 <body class="hold-transition sidebar-mini layout-fixed">
@@ -79,6 +145,20 @@ $recent = $stmt->fetchAll();
         <ul class="navbar-nav">
             <li class="nav-item">
                 <a class="nav-link" data-widget="pushmenu" href="#" role="button"><i class="fas fa-bars"></i></a>
+            </li>
+        </ul>
+        <ul class="navbar-nav ml-auto">
+            <li class="nav-item">
+                <span class="nav-link">
+                    <i class="fas fa-user-tag mr-1"></i>
+                    <?php 
+                    if ($currentUserRole === 'super_admin') {
+                        echo '<span class="badge badge-danger">Super Admin</span>';
+                    } else {
+                        echo '<span class="badge badge-primary">Admin</span>';
+                    }
+                    ?>
+                </span>
             </li>
         </ul>
     </nav>
@@ -94,8 +174,12 @@ $recent = $stmt->fetchAll();
                 <div class="row mb-2">
                     <div class="col-sm-6">
                         <h1 class="m-0">Dashboard</h1>
+                        <?php if ($currentUserRole === 'super_admin'): ?>
+                            <small class="text-danger"><i class="fas fa-shield-alt mr-1"></i> Super Admin View - Showing all records</small>
+                        <?php else: ?>
+                            <small class="text-primary"><i class="fas fa-user mr-1"></i> Admin View - Showing records for your students only</small>
+                        <?php endif; ?>
                     </div>
-                   
                 </div>
             </div>
         </div>
@@ -108,7 +192,13 @@ $recent = $stmt->fetchAll();
                     <div class="col-12">
                         <div class="callout callout-info">
                             <h5><i class="fas fa-user mr-2"></i> Welcome back, <?php echo htmlspecialchars($_SESSION['full_name'] ?? 'Admin'); ?>!</h5>
-                            <p>Here's an overview of your attendance system. Everything you need in one place.</p>
+                            <p>
+                                <?php if ($currentUserRole === 'super_admin'): ?>
+                                    You have <strong>full access</strong> to all system records and functions.
+                                <?php else: ?>
+                                    You can view and manage <strong>attendance for students you created</strong>. Contact Super Admin for full access.
+                                <?php endif; ?>
+                            </p>
                         </div>
                     </div>
                 </div>
@@ -119,12 +209,22 @@ $recent = $stmt->fetchAll();
                         <div class="small-box bg-info">
                             <div class="inner">
                                 <h3><?php echo $totalStudents; ?></h3>
-                                <p>Total Students</p>
+                                <p>
+                                    <?php if ($currentUserRole === 'super_admin'): ?>
+                                        Total Students
+                                    <?php else: ?>
+                                        My Students
+                                    <?php endif; ?>
+                                </p>
                             </div>
                             <div class="icon">
                                 <i class="fas fa-users"></i>
                             </div>
-                            <a href="masterlist.php" class="small-box-footer">View Details <i class="fas fa-arrow-circle-right"></i></a>
+                            <?php if ($currentUserRole === 'super_admin'): ?>
+                                <a href="masterlist.php" class="small-box-footer">View All Students <i class="fas fa-arrow-circle-right"></i></a>
+                            <?php else: ?>
+                                <a href="masterlist.php?filter=my_students" class="small-box-footer">View My Students <i class="fas fa-arrow-circle-right"></i></a>
+                            <?php endif; ?>
                         </div>
                     </div>
                     
@@ -132,7 +232,13 @@ $recent = $stmt->fetchAll();
                         <div class="small-box bg-success">
                             <div class="inner">
                                 <h3><?php echo $todayAttendance; ?></h3>
-                                <p>Today's Attendance</p>
+                                <p>
+                                    <?php if ($currentUserRole === 'super_admin'): ?>
+                                        Today's Attendance
+                                    <?php else: ?>
+                                        My Today's Attendance
+                                    <?php endif; ?>
+                                </p>
                             </div>
                             <div class="icon">
                                 <i class="fas fa-calendar-check"></i>
@@ -145,12 +251,22 @@ $recent = $stmt->fetchAll();
                         <div class="small-box bg-warning">
                             <div class="inner">
                                 <h3><?php echo $totalAttendance; ?></h3>
-                                <p>Active Records</p>
+                                <p>
+                                    <?php if ($currentUserRole === 'super_admin'): ?>
+                                        Active Records
+                                    <?php else: ?>
+                                        My Active Records
+                                    <?php endif; ?>
+                                </p>
                             </div>
                             <div class="icon">
                                 <i class="fas fa-clipboard-list"></i>
                             </div>
-                            <a href="#" class="small-box-footer">View All <i class="fas fa-arrow-circle-right"></i></a>
+                            <?php if ($currentUserRole === 'super_admin'): ?>
+                                <a href="attendance-list.php" class="small-box-footer">View All Records <i class="fas fa-arrow-circle-right"></i></a>
+                            <?php else: ?>
+                                <a href="attendance-list.php?filter=my_records" class="small-box-footer">View My Records <i class="fas fa-arrow-circle-right"></i></a>
+                            <?php endif; ?>
                         </div>
                     </div>
                     
@@ -158,12 +274,22 @@ $recent = $stmt->fetchAll();
                         <div class="small-box bg-gradient-secondary">
                             <div class="inner">
                                 <h3><?php echo $totalArchived; ?></h3>
-                                <p>Archived Records</p>
+                                <p>
+                                    <?php if ($currentUserRole === 'super_admin'): ?>
+                                        Archived Records
+                                    <?php else: ?>
+                                        My Archived Records
+                                    <?php endif; ?>
+                                </p>
                             </div>
                             <div class="icon">
                                 <i class="fas fa-archive"></i>
                             </div>
-                            <a href="archive-manager.php" class="small-box-footer">Manage Archive <i class="fas fa-arrow-circle-right"></i></a>
+                            <?php if ($currentUserRole === 'super_admin'): ?>
+                                <a href="archive-manager.php" class="small-box-footer">Manage All Archive <i class="fas fa-arrow-circle-right"></i></a>
+                            <?php else: ?>
+                                <a href="archive-manager.php?filter=my_records" class="small-box-footer">Manage My Archive <i class="fas fa-arrow-circle-right"></i></a>
+                            <?php endif; ?>
                         </div>
                     </div>
                 </div>
@@ -174,6 +300,11 @@ $recent = $stmt->fetchAll();
                         <div class="card">
                             <div class="card-header">
                                 <h3 class="card-title"><i class="fas fa-history mr-2"></i> Recent Attendance Activity</h3>
+                                <?php if ($currentUserRole === 'super_admin'): ?>
+                                    <span class="badge badge-danger float-right">All Admins</span>
+                                <?php else: ?>
+                                    <span class="badge badge-primary float-right">My Students Only</span>
+                                <?php endif; ?>
                             </div>
                             <div class="card-body p-0">
                                 <div class="table-responsive recent-table">
@@ -183,6 +314,9 @@ $recent = $stmt->fetchAll();
                                                 <th>Student</th>
                                                 <th>Course</th>
                                                 <th>Time In</th>
+                                                <?php if ($currentUserRole === 'super_admin'): ?>
+                                                    <th>Created By</th>
+                                                <?php endif; ?>
                                                 <th>Status</th>
                                             </tr>
                                         </thead>
@@ -213,6 +347,15 @@ $recent = $stmt->fetchAll();
                                                             <div><?php echo $timeIn->format('h:i A'); ?></div>
                                                             <small class="text-muted"><?php echo $timeAgo; ?></small>
                                                         </td>
+                                                        <?php if ($currentUserRole === 'super_admin'): ?>
+                                                            <td>
+                                                                <?php if (isset($record['recorded_by']) && !empty($record['recorded_by'])): ?>
+                                                                    <span class="badge badge-info"><?php echo htmlspecialchars($record['recorded_by']); ?></span>
+                                                                <?php else: ?>
+                                                                    <span class="badge badge-secondary">System</span>
+                                                                <?php endif; ?>
+                                                            </td>
+                                                        <?php endif; ?>
                                                         <td>
                                                             <?php if ($isLate): ?>
                                                                 <span class="badge badge-warning p-2">Late</span>
@@ -224,7 +367,7 @@ $recent = $stmt->fetchAll();
                                                 <?php endforeach; ?>
                                             <?php else: ?>
                                                 <tr>
-                                                    <td colspan="4" class="text-center text-muted py-4">
+                                                    <td colspan="<?php echo ($currentUserRole === 'super_admin') ? 5 : 4; ?>" class="text-center text-muted py-4">
                                                         <i class="fas fa-clipboard-list fa-2x mb-3 d-block"></i>
                                                         No recent attendance records
                                                     </td>
@@ -252,24 +395,45 @@ $recent = $stmt->fetchAll();
                                     </div>
                                     
                                     <div class="col-12 mb-3">
-                                        <a href="masterlist.php" class="btn btn-app btn-block bg-gradient-info">
-                                            <i class="fas fa-user-graduate fa-2x"></i> 
-                                            <span>Manage<br>Students</span>
-                                        </a>
+                                        <?php if ($currentUserRole === 'super_admin'): ?>
+                                            <a href="masterlist.php" class="btn btn-app btn-block bg-gradient-info">
+                                                <i class="fas fa-user-graduate fa-2x"></i> 
+                                                <span>All<br>Students</span>
+                                            </a>
+                                        <?php else: ?>
+                                            <a href="masterlist.php?filter=my_students" class="btn btn-app btn-block bg-gradient-info">
+                                                <i class="fas fa-user-graduate fa-2x"></i> 
+                                                <span>My<br>Students</span>
+                                            </a>
+                                        <?php endif; ?>
                                     </div>
                                     
                                     <div class="col-12 mb-3">
-                                        <a href="archive-manager.php" class="btn btn-app btn-block bg-gradient-warning">
-                                            <i class="fas fa-archive fa-2x"></i> 
-                                            <span>Archive<br>Records</span>
-                                        </a>
+                                        <?php if ($currentUserRole === 'super_admin'): ?>
+                                            <a href="archive-manager.php" class="btn btn-app btn-block bg-gradient-warning">
+                                                <i class="fas fa-archive fa-2x"></i> 
+                                                <span>All<br>Archive</span>
+                                            </a>
+                                        <?php else: ?>
+                                            <a href="archive-manager.php?filter=my_records" class="btn btn-app btn-block bg-gradient-warning">
+                                                <i class="fas fa-archive fa-2x"></i> 
+                                                <span>My<br>Archive</span>
+                                            </a>
+                                        <?php endif; ?>
                                     </div>
                                     
                                     <div class="col-12">
-                                        <a href="./endpoint/download-attendance-excel.php" class="btn btn-app btn-block bg-gradient-success">
-                                            <i class="fas fa-file-excel fa-2x"></i> 
-                                            <span>Export<br>Data</span>
-                                        </a>
+                                        <?php if ($currentUserRole === 'super_admin'): ?>
+                                            <a href="./endpoint/download-attendance-excel.php" class="btn btn-app btn-block bg-gradient-success">
+                                                <i class="fas fa-file-excel fa-2x"></i> 
+                                                <span>Export All<br>Data</span>
+                                            </a>
+                                        <?php else: ?>
+                                            <a href="./endpoint/download-attendance-excel.php?filter=my_records" class="btn btn-app btn-block bg-gradient-success">
+                                                <i class="fas fa-file-excel fa-2x"></i> 
+                                                <span>Export My<br>Data</span>
+                                            </a>
+                                        <?php endif; ?>
                                     </div>
                                 </div>
                             </div>

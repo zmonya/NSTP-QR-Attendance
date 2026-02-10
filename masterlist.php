@@ -8,9 +8,49 @@ if (!isset($_SESSION['user_id'])) {
 
 include ('./conn/conn.php');
 
-$stmt = $conn->prepare("SELECT * FROM tbl_student");
-$stmt->execute();
+// Get user info
+$user_id = $_SESSION['user_id'];
+$user_role = $_SESSION['role'] ?? 'admin';
+$user_name = $_SESSION['full_name'] ?? 'User';
+
+// Prepare query based on role
+if ($user_role === 'super_admin') {
+    // Super admin sees all students with admin info
+    $stmt = $conn->prepare("
+        SELECT s.*, u.full_name as admin_name, u.username as admin_username 
+        FROM tbl_student s 
+        LEFT JOIN tbl_users u ON s.created_by = u.user_id 
+        ORDER BY s.tbl_student_id DESC
+    ");
+    $stmt->execute();
+} else {
+    // Regular admin only sees their own students
+    $stmt = $conn->prepare("
+        SELECT s.* 
+        FROM tbl_student s 
+        WHERE s.created_by = ? 
+        ORDER BY s.tbl_student_id DESC
+    ");
+    $stmt->execute([$user_id]);
+}
+
 $result = $stmt->fetchAll();
+
+// Get total counts for stats
+if ($user_role === 'super_admin') {
+    $total_stmt = $conn->prepare("SELECT COUNT(*) FROM tbl_student");
+    $total_stmt->execute();
+    $total_students = $total_stmt->fetchColumn();
+    
+    $my_students_stmt = $conn->prepare("SELECT COUNT(*) FROM tbl_student WHERE created_by = ?");
+    $my_students_stmt->execute([$user_id]);
+    $my_students = $my_students_stmt->fetchColumn();
+} else {
+    $total_stmt = $conn->prepare("SELECT COUNT(*) FROM tbl_student WHERE created_by = ?");
+    $total_stmt->execute([$user_id]);
+    $total_students = $total_stmt->fetchColumn();
+    $my_students = $total_students;
+}
 ?>
 
 <!DOCTYPE html>
@@ -40,6 +80,16 @@ $result = $stmt->fetchAll();
             margin: 0 auto;
             display: block;
         }
+        
+        .user-badge {
+            font-size: 0.85rem;
+            padding: 5px 10px;
+        }
+        
+        .permission-badge {
+            font-size: 0.75rem;
+            padding: 3px 8px;
+        }
     </style>
 </head>
 <body class="hold-transition sidebar-mini layout-fixed">
@@ -65,6 +115,12 @@ $result = $stmt->fetchAll();
                 <div class="row mb-2">
                     <div class="col-sm-6">
                         <h1 class="m-0">Student Masterlist</h1>
+                        <small>
+                            Logged in as: 
+                            <span class="badge badge-<?php echo ($user_role === 'super_admin') ? 'danger' : 'primary'; ?> user-badge">
+                                <?php echo htmlspecialchars($user_name); ?> (<?php echo $user_role; ?>)
+                            </span>
+                        </small>
                     </div>
                     <div class="col-sm-6">
                         <ol class="breadcrumb float-sm-right">
@@ -79,6 +135,75 @@ $result = $stmt->fetchAll();
         <!-- Main Content -->
         <section class="content">
             <div class="container-fluid">
+                <!-- Quick Stats -->
+                <div class="row mb-3">
+                    <div class="col-lg-3 col-6">
+                        <div class="small-box bg-info">
+                            <div class="inner">
+                                <h3><?php echo $total_students; ?></h3>
+                                <p>
+                                    <?php if ($user_role === 'super_admin'): ?>
+                                    Total Students
+                                    <?php else: ?>
+                                    My Students
+                                    <?php endif; ?>
+                                </p>
+                            </div>
+                            <div class="icon">
+                                <i class="fas fa-users"></i>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <?php if ($user_role === 'super_admin'): ?>
+                    <div class="col-lg-3 col-6">
+                        <div class="small-box bg-success">
+                            <div class="inner">
+                                <h3><?php echo $my_students; ?></h3>
+                                <p>Students I Added</p>
+                            </div>
+                            <div class="icon">
+                                <i class="fas fa-user-plus"></i>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-lg-3 col-6">
+                        <div class="small-box bg-warning">
+                            <div class="inner">
+                                <?php
+                                $other_stmt = $conn->prepare("SELECT COUNT(DISTINCT created_by) FROM tbl_student WHERE created_by IS NOT NULL");
+                                $other_stmt->execute();
+                                $other_admins = $other_stmt->fetchColumn();
+                                ?>
+                                <h3><?php echo $other_admins; ?></h3>
+                                <p>Other Admins</p>
+                            </div>
+                            <div class="icon">
+                                <i class="fas fa-user-shield"></i>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-lg-3 col-6">
+                        <div class="small-box bg-gradient-secondary">
+                            <div class="inner">
+                                <?php
+                                $no_creator_stmt = $conn->prepare("SELECT COUNT(*) FROM tbl_student WHERE created_by IS NULL");
+                                $no_creator_stmt->execute();
+                                $no_creator = $no_creator_stmt->fetchColumn();
+                                ?>
+                                <h3><?php echo $no_creator; ?></h3>
+                                <p>System Added</p>
+                            </div>
+                            <div class="icon">
+                                <i class="fas fa-user-cog"></i>
+                            </div>
+                        </div>
+                    </div>
+                    <?php endif; ?>
+                </div>
+
                 <!-- Action Buttons -->
                 <div class="row mb-3">
                     <div class="col-12">
@@ -95,6 +220,15 @@ $result = $stmt->fetchAll();
                 <div class="card">
                     <div class="card-header">
                         <h3 class="card-title">List of Students</h3>
+                        <?php if ($user_role === 'super_admin'): ?>
+                        <div class="card-tools">
+                            <span class="badge badge-info">Viewing: All Students</span>
+                        </div>
+                        <?php else: ?>
+                        <div class="card-tools">
+                            <span class="badge badge-primary">Viewing: My Students Only</span>
+                        </div>
+                        <?php endif; ?>
                     </div>
                     <div class="card-body p-0">
                         <div class="table-responsive student-table">
@@ -105,6 +239,9 @@ $result = $stmt->fetchAll();
                                         <th>Name</th>
                                         <th>Course & Section</th>
                                         <th>QR Code</th>
+                                        <?php if ($user_role === 'super_admin'): ?>
+                                        <th>Added By</th>
+                                        <?php endif; ?>
                                         <th>Actions</th>
                                     </tr>
                                 </thead>
@@ -115,6 +252,12 @@ $result = $stmt->fetchAll();
                                         $studentName = $row["student_name"];
                                         $studentCourse = $row["course_section"];
                                         $qrCode = $row["generated_code"];
+                                        $createdBy = $row["created_by"] ?? null;
+                                        $adminName = $row["admin_name"] ?? null;
+                                        $adminUsername = $row["admin_username"] ?? null;
+                                        
+                                        // Check if current user can edit/delete this student
+                                        $canModify = ($user_role === 'super_admin') || ($createdBy == $user_id);
                                         ?>
                                         <tr>
                                             <td><?= $studentID ?></td>
@@ -125,14 +268,33 @@ $result = $stmt->fetchAll();
                                                     <i class="fas fa-qrcode"></i> View QR
                                                 </button>
                                             </td>
+                                            <?php if ($user_role === 'super_admin'): ?>
+                                            <td>
+                                                <?php if ($adminName): ?>
+                                                <span class="badge badge-secondary" data-toggle="tooltip" title="Username: <?= htmlspecialchars($adminUsername) ?>">
+                                                    <?= htmlspecialchars($adminName) ?>
+                                                </span>
+                                                <?php elseif ($createdBy): ?>
+                                                <span class="badge badge-light">Admin ID: <?= $createdBy ?></span>
+                                                <?php else: ?>
+                                                <span class="badge badge-dark">System</span>
+                                                <?php endif; ?>
+                                            </td>
+                                            <?php endif; ?>
                                             <td>
                                                 <div class="action-buttons">
+                                                    <?php if ($canModify): ?>
                                                     <button class="btn btn-warning btn-sm" onclick="updateStudent(<?= $studentID ?>)">
                                                         <i class="fas fa-edit"></i> Edit
                                                     </button>
                                                     <button class="btn btn-danger btn-sm" onclick="deleteStudent(<?= $studentID ?>)">
                                                         <i class="fas fa-trash"></i> Delete
                                                     </button>
+                                                    <?php else: ?>
+                                                    <span class="text-muted permission-badge" data-toggle="tooltip" title="You can only modify students you added">
+                                                        <i class="fas fa-lock"></i> No Permission
+                                                    </span>
+                                                    <?php endif; ?>
                                                 </div>
                                             </td>
                                         </tr>
@@ -143,6 +305,9 @@ $result = $stmt->fetchAll();
                                                 <div class="modal-content">
                                                     <div class="modal-header">
                                                         <h5 class="modal-title"><?= $studentName ?>'s QR Code</h5>
+                                                        <?php if ($user_role === 'super_admin' && $adminName): ?>
+                                                        <small class="text-muted ml-2">(Added by: <?= htmlspecialchars($adminName) ?>)</small>
+                                                        <?php endif; ?>
                                                         <button type="button" class="close" data-dismiss="modal">
                                                             <span>&times;</span>
                                                         </button>
@@ -151,6 +316,7 @@ $result = $stmt->fetchAll();
                                                         <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=<?= $qrCode ?>" 
                                                              alt="QR Code" class="qr-modal-img">
                                                         <p class="mt-3 text-muted">Scan this QR code for attendance</p>
+                                                        <p><small>Code: <code><?= $qrCode ?></code></small></p>
                                                     </div>
                                                     <div class="modal-footer">
                                                         <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
@@ -181,6 +347,7 @@ $result = $stmt->fetchAll();
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">Add Student</h5>
+                <small class="text-muted ml-2">(Will be added under your account)</small>
                 <button type="button" class="close" data-dismiss="modal">
                     <span>&times;</span>
                 </button>
@@ -251,6 +418,7 @@ $result = $stmt->fetchAll();
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">Import Students from Excel</h5>
+                <small class="text-muted ml-2">(Will be added under your account)</small>
                 <button type="button" class="close" data-dismiss="modal">
                     <span>&times;</span>
                 </button>
@@ -296,17 +464,26 @@ $(document).ready(function() {
         "pageLength": 10,
         "responsive": true
     });
+    
+    // Enable tooltips
+    $('[data-toggle="tooltip"]').tooltip();
 });
 
 function updateStudent(id) {
-    $("#updateStudentModal").modal("show");
-    let updateStudentId = $("#studentID-" + id)?.text() || id;
-    let updateStudentName = $("#studentName-" + id)?.text() || "";
-    let updateStudentCourse = $("#studentCourse-" + id)?.text() || "";
+    // Find the row with this student ID
+    const row = document.querySelector(`tr:has(button[onclick="updateStudent(${id})"])`);
+    if (!row) return;
     
-    $("#updateStudentId").val(updateStudentId);
-    $("#updateStudentName").val(updateStudentName);
-    $("#updateStudentCourse").val(updateStudentCourse);
+    // Get student data from the row
+    const studentName = row.cells[1].textContent;
+    const studentCourse = row.cells[2].textContent;
+    
+    // Set values in the modal
+    $("#updateStudentId").val(id);
+    $("#updateStudentName").val(studentName);
+    $("#updateStudentCourse").val(studentCourse);
+    
+    $("#updateStudentModal").modal("show");
 }
 
 function deleteStudent(id) {
@@ -327,6 +504,14 @@ function generateRandomCode(length) {
 
 function generateQrCode() {
     const qrImg = document.getElementById('qrImg');
+    const studentName = document.getElementById('studentName').value.trim();
+    const studentCourse = document.getElementById('studentCourse').value.trim();
+    
+    if (!studentName || !studentCourse) {
+        alert("Please enter student name and course section first!");
+        return;
+    }
+    
     let text = generateRandomCode(10);
     $("#generatedCode").val(text);
 
@@ -392,6 +577,12 @@ function importExcel() {
 $('#importExcelModal').on('hidden.bs.modal', function () {
     document.getElementById('importExcelForm').reset();
 });
+
+// Function to check if user can modify student (for confirmation dialogs)
+function checkPermissionBeforeAction(studentId, action) {
+    // You could implement an AJAX check here if needed
+    return true; // For now, rely on backend validation
+}
 </script>
 </body>
 </html>

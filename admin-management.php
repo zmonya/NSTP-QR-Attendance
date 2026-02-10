@@ -97,7 +97,7 @@ include ('./conn/conn.php');
                         <div class="small-box bg-info">
                             <div class="inner">
                                 <?php
-                                $stmt = $conn->prepare("SELECT COUNT(*) FROM tbl_admin");
+                                $stmt = $conn->prepare("SELECT COUNT(*) FROM tbl_users");
                                 $stmt->execute();
                                 $totalAdmins = $stmt->fetchColumn();
                                 ?>
@@ -114,9 +114,8 @@ include ('./conn/conn.php');
                         <div class="small-box bg-success">
                             <div class="inner">
                                 <?php
-                                $stmt = $conn->prepare("SELECT COUNT(*) FROM tbl_admin WHERE status = 'active'");
-                                $stmt->execute();
-                                $activeAdmins = $stmt->fetchColumn();
+                                // Note: tbl_users doesn't have status field, all are active
+                                $activeAdmins = $totalAdmins;
                                 ?>
                                 <h3><?php echo $activeAdmins; ?></h3>
                                 <p>Active Administrators</p>
@@ -131,7 +130,7 @@ include ('./conn/conn.php');
                         <div class="small-box bg-warning">
                             <div class="inner">
                                 <?php
-                                $stmt = $conn->prepare("SELECT COUNT(*) FROM tbl_admin WHERE role = 'super_admin'");
+                                $stmt = $conn->prepare("SELECT COUNT(*) FROM tbl_users WHERE role = 'super_admin'");
                                 $stmt->execute();
                                 $superAdmins = $stmt->fetchColumn();
                                 ?>
@@ -148,15 +147,14 @@ include ('./conn/conn.php');
                         <div class="small-box bg-gradient-secondary">
                             <div class="inner">
                                 <?php
-                                $stmt = $conn->prepare("SELECT COUNT(*) FROM tbl_admin WHERE status = 'inactive'");
-                                $stmt->execute();
-                                $inactiveAdmins = $stmt->fetchColumn();
+                                // No inactive field, so show 0
+                                $inactiveAdmins = 0;
                                 ?>
                                 <h3><?php echo $inactiveAdmins; ?></h3>
-                                <p>Inactive Administrators</p>
+                                <p>Regular Administrators</p>
                             </div>
                             <div class="icon">
-                                <i class="fas fa-user-slash"></i>
+                                <i class="fas fa-user-tie"></i>
                             </div>
                         </div>
                     </div>
@@ -183,7 +181,6 @@ include ('./conn/conn.php');
                                             <th>Username</th>
                                             <th>Email</th>
                                             <th>Role</th>
-                                            <th>Status</th>
                                             <th>Created</th>
                                             <th>Actions</th>
                                         </tr>
@@ -191,7 +188,7 @@ include ('./conn/conn.php');
                                     <tbody>
                                         <?php
                                         $stmt = $conn->prepare("
-                                            SELECT * FROM tbl_admin 
+                                            SELECT * FROM tbl_users 
                                             ORDER BY role DESC, created_at DESC
                                         ");
                                         $stmt->execute();
@@ -200,11 +197,10 @@ include ('./conn/conn.php');
                                         foreach ($admins as $admin):
                                             $initials = strtoupper(substr($admin['full_name'], 0, 2));
                                             $roleClass = $admin['role'] === 'super_admin' ? 'danger' : 'primary';
-                                            $statusClass = $admin['status'] === 'active' ? 'success' : 'secondary';
                                             $createdDate = new DateTime($admin['created_at']);
                                         ?>
                                         <tr>
-                                            <td><?php echo $admin['tbl_admin_id']; ?></td>
+                                            <td><?php echo $admin['user_id']; ?></td>
                                             <td>
                                                 <div class="d-flex align-items-center">
                                                     <div class="admin-avatar mr-3">
@@ -216,37 +212,31 @@ include ('./conn/conn.php');
                                                 </div>
                                             </td>
                                             <td><?php echo htmlspecialchars($admin['username']); ?></td>
-                                            <td><?php echo htmlspecialchars($admin['email'] ?? 'N/A'); ?></td>
+                                            <td><?php echo htmlspecialchars($admin['email']); ?></td>
                                             <td>
                                                 <span class="badge badge-<?php echo $roleClass; ?> role-badge">
                                                     <?php echo ucfirst(str_replace('_', ' ', $admin['role'])); ?>
-                                                </span>
-                                            </td>
-                                            <td>
-                                                <span class="badge badge-<?php echo $statusClass; ?> status-badge">
-                                                    <?php echo ucfirst($admin['status']); ?>
                                                 </span>
                                             </td>
                                             <td><?php echo $createdDate->format('M d, Y'); ?></td>
                                             <td>
                                                 <div class="action-buttons">
                                                     <button class="btn btn-sm btn-info edit-admin" 
-                                                            data-id="<?php echo $admin['tbl_admin_id']; ?>"
+                                                            data-id="<?php echo $admin['user_id']; ?>"
                                                             data-name="<?php echo htmlspecialchars($admin['full_name']); ?>"
                                                             data-username="<?php echo htmlspecialchars($admin['username']); ?>"
-                                                            data-email="<?php echo htmlspecialchars($admin['email'] ?? ''); ?>"
-                                                            data-role="<?php echo $admin['role']; ?>"
-                                                            data-status="<?php echo $admin['status']; ?>">
+                                                            data-email="<?php echo htmlspecialchars($admin['email']); ?>"
+                                                            data-role="<?php echo $admin['role']; ?>">
                                                         <i class="fas fa-edit"></i>
                                                     </button>
                                                     <button class="btn btn-sm btn-warning change-password" 
-                                                            data-id="<?php echo $admin['tbl_admin_id']; ?>"
+                                                            data-id="<?php echo $admin['user_id']; ?>"
                                                             data-name="<?php echo htmlspecialchars($admin['full_name']); ?>">
                                                         <i class="fas fa-key"></i>
                                                     </button>
-                                                    <?php if ($admin['tbl_admin_id'] != $_SESSION['user_id'] && $admin['role'] != 'super_admin'): ?>
+                                                    <?php if ($admin['user_id'] != $_SESSION['user_id'] && $admin['role'] != 'super_admin'): ?>
                                                     <button class="btn btn-sm btn-danger delete-admin" 
-                                                            data-id="<?php echo $admin['tbl_admin_id']; ?>"
+                                                            data-id="<?php echo $admin['user_id']; ?>"
                                                             data-name="<?php echo htmlspecialchars($admin['full_name']); ?>">
                                                         <i class="fas fa-trash"></i>
                                                     </button>
@@ -305,8 +295,8 @@ include ('./conn/conn.php');
                     <div class="row">
                         <div class="col-md-6">
                             <div class="form-group">
-                                <label for="email">Email Address</label>
-                                <input type="email" class="form-control" id="email" name="email">
+                                <label for="email">Email Address *</label>
+                                <input type="email" class="form-control" id="email" name="email" required>
                             </div>
                         </div>
                         <div class="col-md-6">
@@ -335,14 +325,6 @@ include ('./conn/conn.php');
                             </div>
                         </div>
                     </div>
-                    
-                    <div class="form-group">
-                        <label for="status">Status</label>
-                        <select class="form-control" id="status" name="status">
-                            <option value="active">Active</option>
-                            <option value="inactive">Inactive</option>
-                        </select>
-                    </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
@@ -368,7 +350,7 @@ include ('./conn/conn.php');
                 </button>
             </div>
             <form id="editAdminForm" method="POST">
-                <input type="hidden" id="edit_admin_id" name="admin_id">
+                <input type="hidden" id="edit_user_id" name="user_id">
                 <div class="modal-body">
                     <div class="row">
                         <div class="col-md-6">
@@ -388,8 +370,8 @@ include ('./conn/conn.php');
                     <div class="row">
                         <div class="col-md-6">
                             <div class="form-group">
-                                <label for="edit_email">Email Address</label>
-                                <input type="email" class="form-control" id="edit_email" name="email">
+                                <label for="edit_email">Email Address *</label>
+                                <input type="email" class="form-control" id="edit_email" name="email" required>
                             </div>
                         </div>
                         <div class="col-md-6">
@@ -401,14 +383,6 @@ include ('./conn/conn.php');
                                 </select>
                             </div>
                         </div>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="edit_status">Status</label>
-                        <select class="form-control" id="edit_status" name="status">
-                            <option value="active">Active</option>
-                            <option value="inactive">Inactive</option>
-                        </select>
                     </div>
                     
                     <div class="alert alert-info">
@@ -456,7 +430,7 @@ include ('./conn/conn.php');
                 </button>
             </div>
             <form id="changePasswordForm" method="POST">
-                <input type="hidden" id="password_admin_id" name="admin_id">
+                <input type="hidden" id="password_user_id" name="user_id">
                 <div class="modal-body">
                     <div class="text-center mb-4">
                         <h5 id="passwordAdminName"></h5>
@@ -526,12 +500,15 @@ $(document).ready(function() {
             return;
         }
         
+        console.log('Sending add admin request:', formData);
+        
         $.ajax({
-            url: './endpoint/add-admin.php',
+            url: 'add-admin.php',
             method: 'POST',
             data: formData,
             dataType: 'json',
             success: function(response) {
+                console.log('Add admin response:', response);
                 if (response.success) {
                     Swal.fire('Success', response.message, 'success');
                     $('#addAdminModal').modal('hide');
@@ -541,7 +518,10 @@ $(document).ready(function() {
                     Swal.fire('Error', response.message, 'error');
                 }
             },
-            error: function() {
+            error: function(xhr, status, error) {
+                console.error('AJAX Error:', error);
+                console.error('Status:', status);
+                console.error('Response:', xhr.responseText);
                 Swal.fire('Error', 'Network error. Please try again.', 'error');
             }
         });
@@ -549,19 +529,21 @@ $(document).ready(function() {
     
     // Handle edit button click
     $('.edit-admin').on('click', function() {
-        const adminId = $(this).data('id');
-        const adminName = $(this).data('name');
+        const userId = $(this).data('id');
+        const userName = $(this).data('name');
         const username = $(this).data('username');
         const email = $(this).data('email');
         const role = $(this).data('role');
-        const status = $(this).data('status');
         
-        $('#edit_admin_id').val(adminId);
-        $('#edit_full_name').val(adminName);
+        $('#edit_user_id').val(userId);
+        $('#edit_full_name').val(userName);
         $('#edit_username').val(username);
         $('#edit_email').val(email);
         $('#edit_role').val(role);
-        $('#edit_status').val(status);
+        
+        // Clear password fields
+        $('#edit_password').val('');
+        $('#edit_confirm_password').val('');
         
         $('#editAdminModal').modal('show');
     });
@@ -588,12 +570,15 @@ $(document).ready(function() {
             }
         }
         
+        console.log('Sending edit admin request:', formData);
+        
         $.ajax({
-            url: './endpoint/edit-admin.php',
+            url: 'edit-admin.php',
             method: 'POST',
             data: formData,
             dataType: 'json',
             success: function(response) {
+                console.log('Edit admin response:', response);
                 if (response.success) {
                     Swal.fire('Success', response.message, 'success');
                     $('#editAdminModal').modal('hide');
@@ -603,7 +588,10 @@ $(document).ready(function() {
                     Swal.fire('Error', response.message, 'error');
                 }
             },
-            error: function() {
+            error: function(xhr, status, error) {
+                console.error('AJAX Error:', error);
+                console.error('Status:', status);
+                console.error('Response:', xhr.responseText);
                 Swal.fire('Error', 'Network error. Please try again.', 'error');
             }
         });
@@ -611,11 +599,15 @@ $(document).ready(function() {
     
     // Handle change password button click
     $('.change-password').on('click', function() {
-        const adminId = $(this).data('id');
-        const adminName = $(this).data('name');
+        const userId = $(this).data('id');
+        const userName = $(this).data('name');
         
-        $('#password_admin_id').val(adminId);
-        $('#passwordAdminName').text(adminName);
+        $('#password_user_id').val(userId);
+        $('#passwordAdminName').text(userName);
+        
+        // Clear password fields
+        $('#new_password').val('');
+        $('#confirm_new_password').val('');
         
         $('#changePasswordModal').modal('show');
     });
@@ -624,12 +616,11 @@ $(document).ready(function() {
     $('#changePasswordForm').on('submit', function(e) {
         e.preventDefault();
         
-        const formData = $(this).serialize();
-        
-        // Validate passwords
+        const userId = $('#password_user_id').val();
         const password = $('#new_password').val();
         const confirmPassword = $('#confirm_new_password').val();
         
+        // Validate passwords
         if (password !== confirmPassword) {
             Swal.fire('Error', 'Passwords do not match!', 'error');
             return;
@@ -640,14 +631,24 @@ $(document).ready(function() {
             return;
         }
         
+        // Simple data for password change
+        const formData = {
+            user_id: userId,
+            password: password,
+            confirm_password: confirmPassword
+        };
+        
+        console.log('Sending change password request:', formData);
+        
         $.ajax({
-            url: './endpoint/change-admin-password.php',
+            url: 'edit-admin.php',
             method: 'POST',
             data: formData,
             dataType: 'json',
             success: function(response) {
+                console.log('Change password response:', response);
                 if (response.success) {
-                    Swal.fire('Success', response.message, 'success');
+                    Swal.fire('Success', 'Password changed successfully!', 'success');
                     $('#changePasswordModal').modal('hide');
                     $('#changePasswordForm')[0].reset();
                     setTimeout(() => location.reload(), 1500);
@@ -655,7 +656,10 @@ $(document).ready(function() {
                     Swal.fire('Error', response.message, 'error');
                 }
             },
-            error: function() {
+            error: function(xhr, status, error) {
+                console.error('AJAX Error:', error);
+                console.error('Status:', status);
+                console.error('Response:', xhr.responseText);
                 Swal.fire('Error', 'Network error. Please try again.', 'error');
             }
         });
@@ -663,12 +667,12 @@ $(document).ready(function() {
     
     // Handle delete button click
     $('.delete-admin').on('click', function() {
-        const adminId = $(this).data('id');
-        const adminName = $(this).data('name');
+        const userId = $(this).data('id');
+        const userName = $(this).data('name');
         
         Swal.fire({
             title: 'Delete Administrator?',
-            html: `Are you sure you want to delete <strong>${adminName}</strong>?<br>This action cannot be undone.`,
+            html: `Are you sure you want to delete <strong>${userName}</strong>?<br>This action cannot be undone.`,
             icon: 'warning',
             showCancelButton: true,
             confirmButtonColor: '#d33',
@@ -677,12 +681,15 @@ $(document).ready(function() {
             cancelButtonText: 'Cancel'
         }).then((result) => {
             if (result.isConfirmed) {
+                console.log('Sending delete request for user ID:', userId);
+                
                 $.ajax({
-                    url: './endpoint/delete-admin.php',
+                    url: 'delete-admin.php',
                     method: 'POST',
-                    data: { admin_id: adminId },
+                    data: { user_id: userId },
                     dataType: 'json',
                     success: function(response) {
+                        console.log('Delete response:', response);
                         if (response.success) {
                             Swal.fire('Deleted!', response.message, 'success');
                             setTimeout(() => location.reload(), 1500);
@@ -690,7 +697,10 @@ $(document).ready(function() {
                             Swal.fire('Error', response.message, 'error');
                         }
                     },
-                    error: function() {
+                    error: function(xhr, status, error) {
+                        console.error('AJAX Error:', error);
+                        console.error('Status:', status);
+                        console.error('Response:', xhr.responseText);
                         Swal.fire('Error', 'Network error. Please try again.', 'error');
                     }
                 });
