@@ -1,10 +1,13 @@
 <?php
 session_start();
 
-// Clear all session variables
+// Unset all session variables
 $_SESSION = array();
 
-// If it's desired to kill the session, also delete the session cookie
+// Destroy the session
+session_destroy();
+
+// Clear session cookie
 if (ini_get("session.use_cookies")) {
     $params = session_get_cookie_params();
     setcookie(session_name(), '', time() - 42000,
@@ -12,14 +15,6 @@ if (ini_get("session.use_cookies")) {
         $params["secure"], $params["httponly"]
     );
 }
-
-// Finally, destroy the session
-session_destroy();
-
-// Prevent caching
-header("Cache-Control: no-cache, no-store, must-revalidate");
-header("Pragma: no-cache");
-header("Expires: 0");
 
 // Redirect to login page
 header("Location: ../login.php");
