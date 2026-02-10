@@ -21,11 +21,34 @@
             width: 100%;
             max-width: 400px;
         }
+        .alert {
+            margin-bottom: 1rem;
+        }
     </style>
 </head>
 <body>
     <div class="login-container">
         <h2 class="text-center mb-4">Login</h2>
+        
+        <!-- Display error message if exists -->
+        <?php if (isset($_GET['error'])): ?>
+            <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                <?php echo htmlspecialchars($_GET['error']); ?>
+                <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+        <?php endif; ?>
+        
+        <?php if (isset($_GET['success'])): ?>
+            <div class="alert alert-success alert-dismissible fade show" role="alert">
+                <?php echo htmlspecialchars($_GET['success']); ?>
+                <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+        <?php endif; ?>
+        
         <form action="endpoint/login-user.php" method="POST">
             <div class="form-group">
                 <label for="username">Username or Email</label>
@@ -41,5 +64,9 @@
             </div>
         </form>
     </div>
+    
+    <!-- Bootstrap JS -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

@@ -2,16 +2,9 @@
 session_start();
 require_once '../conn/conn.php';
 
-// Set JSON header
-header('Content-Type: application/json');
-
-// Initialize response
-$response = ['success' => false, 'message' => ''];
-
 // Check if request method is POST
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    $response['message'] = 'Invalid request method';
-    echo json_encode($response);
+    header("Location: ../login.php?error=Invalid request method");
     exit();
 }
 
@@ -21,8 +14,7 @@ $password = $_POST['password'] ?? '';
 
 // Validate inputs
 if (empty($username) || empty($password)) {
-    $response['message'] = 'Username and password are required';
-    echo json_encode($response);
+    header("Location: ../login.php?error=Username and password are required");
     exit();
 }
 
@@ -38,15 +30,13 @@ try {
     $user = $stmt->fetch(PDO::FETCH_ASSOC);
     
     if (!$user) {
-        $response['message'] = 'Invalid username or password';
-        echo json_encode($response);
+        header("Location: ../login.php?error=Invalid username or password");
         exit();
     }
     
     // Verify password
     if (!password_verify($password, $user['password_hash'])) {
-        $response['message'] = 'Invalid username or password';
-        echo json_encode($response);
+        header("Location: ../login.php?error=Invalid username or password");
         exit();
     }
     
@@ -56,13 +46,12 @@ try {
     $_SESSION['full_name'] = $user['full_name'];
     $_SESSION['role'] = $user['role'];
     
-    $response['success'] = true;
-    $response['message'] = 'Login successful';
-    $response['redirect'] = 'index.php';
+    // Redirect to index.php
+    header("Location: ../index.php");
+    exit();
     
 } catch (PDOException $e) {
-    $response['message'] = 'Login failed: ' . $e->getMessage();
+    header("Location: ../login.php?error=Login failed: " . urlencode($e->getMessage()));
+    exit();
 }
-
-echo json_encode($response);
 ?>

@@ -1,5 +1,7 @@
 <?php
-session_start();
+// Remove session_start() from here since it's already called in index.php
+// session_start(); // REMOVE THIS LINE
+
 // Determine current page for active link highlighting
 $currentPage = basename($_SERVER['PHP_SELF']);
 ?>
@@ -29,9 +31,9 @@ $currentPage = basename($_SERVER['PHP_SELF']);
                         <i class="fas fa-user"></i> <?= htmlspecialchars($_SESSION['full_name']) ?>
                     </a>
                     <div class="dropdown-menu dropdown-menu-right">
-<a class="dropdown-item" href="./endpoint/logout.php">
-    <i class="fas fa-sign-out-alt"></i> Logout
-</a>
+                        <a class="dropdown-item" href="./endpoint/logout.php">
+                            <i class="fas fa-sign-out-alt"></i> Logout
+                        </a>
                     </div>
                 </li>
             <?php else: ?>
