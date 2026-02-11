@@ -1,6 +1,6 @@
 <?php
 session_start();
-require_once '../conn/conn.php';
+require_once './conn/conn.php';
 
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'super_admin') {
     header('Content-Type: application/json');
@@ -15,10 +15,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $password = $_POST['password'];
     $confirm_password = $_POST['confirm_password'];
     $role = $_POST['role'];
-    $status = $_POST['status'];
     
     // Validate inputs
-    if (empty($full_name) || empty($username) || empty($password)) {
+    if (empty($full_name) || empty($username) || empty($email) || empty($password)) {
         echo json_encode(['success' => false, 'message' => 'All required fields must be filled']);
         exit();
     }
@@ -34,7 +33,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
     
     // Check if username already exists
-    $checkStmt = $conn->prepare("SELECT tbl_admin_id FROM tbl_admin WHERE username = ?");
+    $checkStmt = $conn->prepare("SELECT user_id FROM tbl_users WHERE username = ?");
     $checkStmt->execute([$username]);
     
     if ($checkStmt->rowCount() > 0) {
@@ -42,17 +41,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit();
     }
     
+    // Check if email already exists
+    $checkStmt = $conn->prepare("SELECT user_id FROM tbl_users WHERE email = ?");
+    $checkStmt->execute([$email]);
+    
+    if ($checkStmt->rowCount() > 0) {
+        echo json_encode(['success' => false, 'message' => 'Email already exists']);
+        exit();
+    }
+    
     // Hash password
     $password_hash = password_hash($password, PASSWORD_DEFAULT);
+    $created_by = $_SESSION['user_id'];
     
-    // Insert new admin
+    // Insert new admin into tbl_users
     try {
         $stmt = $conn->prepare("
-            INSERT INTO tbl_admin (full_name, username, email, password_hash, role, status) 
+            INSERT INTO tbl_users (full_name, username, email, password_hash, role, created_by) 
             VALUES (?, ?, ?, ?, ?, ?)
         ");
         
-        $stmt->execute([$full_name, $username, $email, $password_hash, $role, $status]);
+        $stmt->execute([$full_name, $username, $email, $password_hash, $role, $created_by]);
         
         echo json_encode([
             'success' => true, 

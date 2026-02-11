@@ -73,49 +73,28 @@ $currentPage = basename($_SERVER['PHP_SELF']);
                 </li>
 
                 <!-- Attendance Records -->
-                <li class="nav-item <?= (in_array($currentPage, ['attendance-records.php', 'archive-manager.php'])) ? 'menu-open' : '' ?>">
-                    <a href="#" class="nav-link <?= (in_array($currentPage, ['attendance-records.php', 'archive-manager.php'])) ? 'active' : '' ?>">
-                        <i class="nav-icon fas fa-clipboard-list"></i>
-                        <p>
-                            Attendance Records
-                            <i class="right fas fa-angle-left"></i>
-                        </p>
+            
+
+                <!-- Archive Manager -->
+                <li class="nav-item">
+                    <a href="archive-manager.php" class="nav-link <?= ($currentPage == 'archive-manager.php') ? 'active' : '' ?>">
+                        <i class="nav-icon fas fa-archive"></i>
+                        <p>Archive Manager</p>
                     </a>
-                    <ul class="nav nav-treeview">
-                      
-                        <li class="nav-item">
-                            <a href="archive-manager.php" class="nav-link <?= ($currentPage == 'archive-manager.php') ? 'active' : '' ?>">
-                                <i class="far fa-circle nav-icon"></i>
-                                <p>Archive Manager</p>
-                            </a>
-                        </li>
-                    </ul>
                 </li>
 
-                <!-- Reports -->
-               
+                <!-- Admin Management (Super Admin Only) -->
+                <?php if (isset($_SESSION['role']) && $_SESSION['role'] === 'super_admin'): ?>
+                <li class="nav-item">
+                    <a href="admin-management.php" class="nav-link <?= ($currentPage == 'admin-management.php') ? 'active' : '' ?>">
+                        <i class="nav-icon fas fa-user-shield"></i>
+                        <p>Admin Management</p>
+                    </a>
+                </li>
+                <?php endif; ?>
 
                 <!-- Settings -->
-                <li class="nav-item <?= (in_array($currentPage, ['settings.php', 'admin-management.php'])) ? 'menu-open' : '' ?>">
-                    <a href="#" class="nav-link <?= (in_array($currentPage, ['settings.php', 'admin-management.php'])) ? 'active' : '' ?>">
-                        <i class="nav-icon fas fa-cog"></i>
-                        <p>
-                            Settings
-                            <i class="right fas fa-angle-left"></i>
-                        </p>
-                    </a>
-                    <ul class="nav nav-treeview">
-                        
-                        <?php if (isset($_SESSION['role']) && $_SESSION['role'] === 'super_admin'): ?>
-                        <li class="nav-item">
-                            <a href="admin-management.php" class="nav-link <?= ($currentPage == 'admin-management.php') ? 'active' : '' ?>">
-                                <i class="far fa-circle nav-icon"></i>
-                                <p>Admin Management</p>
-                            </a>
-                        </li>
-                        <?php endif; ?>
-                    </ul>
-                </li>
+                
 
                 <!-- Divider -->
                 <li class="nav-header">SYSTEM</li>
@@ -168,19 +147,6 @@ $currentPage = basename($_SERVER['PHP_SELF']);
         border-left: 4px solid #ffc107;
     }
     
-    .nav-sidebar .nav-treeview .nav-item > .nav-link.active {
-        background: rgba(255, 255, 255, 0.1);
-        border-left: 4px solid #28a745;
-    }
-    
-    .sidebar-dark-primary .nav-sidebar > .nav-item > .nav-link.active {
-        background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
-    }
-    
-    .nav-item.menu-open > .nav-link {
-        background: rgba(255, 255, 255, 0.1);
-    }
-    
     /* Responsive adjustments */
     @media (max-width: 768px) {
         .brand-text {
@@ -193,36 +159,14 @@ $currentPage = basename($_SERVER['PHP_SELF']);
     }
 </style>
 
-<!-- Initialize AdminLTE sidebar -->
+<!-- Simplified JavaScript - no dropdown functionality needed -->
 <script>
     $(document).ready(function() {
-        // Initialize sidebar treeview
-        $('[data-widget="treeview"]').Treeview('init');
-        
-        // Add active state to current page in treeview
+        // Add active state to current page
         const currentPage = '<?php echo $currentPage; ?>';
         $('.nav-link').each(function() {
             if ($(this).attr('href') === currentPage) {
                 $(this).addClass('active');
-                $(this).closest('.nav-item').addClass('menu-open');
-                $(this).closest('.nav-treeview').closest('.nav-item').addClass('menu-open');
-            }
-        });
-        
-        // Smooth sidebar animations
-        $('.nav-link').on('click', function() {
-            // Remove active class from all links
-            $('.nav-link').removeClass('active');
-            
-            // Add active class to clicked link
-            $(this).addClass('active');
-            
-            // Close other open menus
-            $(this).closest('.nav-item').siblings().removeClass('menu-open');
-            
-            // If this is a treeview parent, toggle it
-            if ($(this).siblings('.nav-treeview').length > 0) {
-                $(this).closest('.nav-item').toggleClass('menu-open');
             }
         });
         

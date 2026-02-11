@@ -8,6 +8,11 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'super_admin') {
 
 date_default_timezone_set('Asia/Manila');
 include ('./conn/conn.php');
+
+// Debug: Print current directory
+$current_dir = __DIR__;
+$base_url = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http") . "://$_SERVER[HTTP_HOST]";
+$full_url = $base_url . $_SERVER['REQUEST_URI'];
 ?>
 
 <!DOCTYPE html>
@@ -50,10 +55,28 @@ include ('./conn/conn.php');
             display: flex;
             gap: 5px;
         }
+        .debug-info {
+            display: none; /* Hidden by default, can show for debugging */
+            background: #f8f9fa;
+            padding: 10px;
+            border: 1px solid #dee2e6;
+            margin-bottom: 10px;
+            font-size: 12px;
+            color: #666;
+        }
     </style>
 </head>
 <body class="hold-transition sidebar-mini layout-fixed">
 <div class="wrapper">
+
+    <!-- Debug Information (can be removed after fixing) -->
+    <div class="debug-info">
+        <strong>Debug Info:</strong><br>
+        Current Directory: <?php echo htmlspecialchars($current_dir); ?><br>
+        Base URL: <?php echo htmlspecialchars($base_url); ?><br>
+        Full URL: <?php echo htmlspecialchars($full_url); ?><br>
+        Server Document Root: <?php echo htmlspecialchars($_SERVER['DOCUMENT_ROOT'] ?? 'Not set'); ?>
+    </div>
 
     <!-- Navbar -->
     <nav class="main-header navbar navbar-expand navbar-white navbar-light">
@@ -147,10 +170,12 @@ include ('./conn/conn.php');
                         <div class="small-box bg-gradient-secondary">
                             <div class="inner">
                                 <?php
-                                // No inactive field, so show 0
-                                $inactiveAdmins = 0;
+                                // Calculate regular admins
+                                $stmt = $conn->prepare("SELECT COUNT(*) FROM tbl_users WHERE role = 'admin'");
+                                $stmt->execute();
+                                $regularAdmins = $stmt->fetchColumn();
                                 ?>
-                                <h3><?php echo $inactiveAdmins; ?></h3>
+                                <h3><?php echo $regularAdmins; ?></h3>
                                 <p>Regular Administrators</p>
                             </div>
                             <div class="icon">
@@ -455,7 +480,6 @@ include ('./conn/conn.php');
                 </div>
             </form>
         </div>
-    </div>
 </div>
 
 <!-- Scripts -->
@@ -468,6 +492,15 @@ include ('./conn/conn.php');
 
 <script>
 $(document).ready(function() {
+    // Debug: Check current URL
+    console.log('Debug Information:');
+    console.log('Current URL:', window.location.href);
+    console.log('Current Path:', window.location.pathname);
+    
+    // Try different paths
+    const basePath = window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/') + 1);
+    console.log('Base Path:', basePath);
+    
     // Initialize DataTable
     $('#adminsTable').DataTable({
         "paging": true,
@@ -480,9 +513,40 @@ $(document).ready(function() {
         "order": [[0, 'desc']]
     });
     
+    // Test endpoint URLs
+    function testEndpoint(url) {
+        $.ajax({
+            url: url,
+            method: 'HEAD',
+            success: function() {
+                console.log('✅ Endpoint exists:', url);
+                return true;
+            },
+            error: function() {
+                console.log('❌ Endpoint not found:', url);
+                return false;
+            }
+        });
+    }
+    
+    // Test the endpoints
+    setTimeout(function() {
+        console.log('Testing endpoint URLs:');
+        testEndpoint('endpoint/add-admin.php');
+        testEndpoint('./endpoint/add-admin.php');
+        testEndpoint('/endpoint/add-admin.php');
+        testEndpoint('add-admin.php');
+        testEndpoint('./add-admin.php');
+    }, 1000);
+    
     // Handle add admin form submission
     $('#addAdminForm').on('submit', function(e) {
         e.preventDefault();
+        
+        // Show loading state
+        const submitBtn = $(this).find('button[type="submit"]');
+        const originalText = submitBtn.html();
+        submitBtn.html('<i class="fas fa-spinner fa-spin mr-2"></i>Creating...').prop('disabled', true);
         
         const formData = $(this).serialize();
         
@@ -492,39 +556,66 @@ $(document).ready(function() {
         
         if (password !== confirmPassword) {
             Swal.fire('Error', 'Passwords do not match!', 'error');
+            submitBtn.html(originalText).prop('disabled', false);
             return;
         }
         
         if (password.length < 8) {
             Swal.fire('Error', 'Password must be at least 8 characters long!', 'error');
+            submitBtn.html(originalText).prop('disabled', false);
             return;
         }
         
-        console.log('Sending add admin request:', formData);
+        console.log('Attempting to send request to: endpoint/add-admin.php');
         
-        $.ajax({
-            url: 'add-admin.php',
-            method: 'POST',
-            data: formData,
-            dataType: 'json',
-            success: function(response) {
-                console.log('Add admin response:', response);
-                if (response.success) {
-                    Swal.fire('Success', response.message, 'success');
-                    $('#addAdminModal').modal('hide');
-                    $('#addAdminForm')[0].reset();
-                    setTimeout(() => location.reload(), 1500);
-                } else {
-                    Swal.fire('Error', response.message, 'error');
-                }
-            },
-            error: function(xhr, status, error) {
-                console.error('AJAX Error:', error);
-                console.error('Status:', status);
-                console.error('Response:', xhr.responseText);
-                Swal.fire('Error', 'Network error. Please try again.', 'error');
+        // Try multiple URL formats
+        const urlsToTry = [
+            'endpoint/add-admin.php',
+            './endpoint/add-admin.php',
+            '/endpoint/add-admin.php',
+            'add-admin.php',
+            './add-admin.php'
+        ];
+        
+        let currentUrlIndex = 0;
+        
+        function tryNextUrl() {
+            if (currentUrlIndex >= urlsToTry.length) {
+                submitBtn.html(originalText).prop('disabled', false);
+                Swal.fire('Error', 'All endpoint URLs failed. Please check if endpoint files exist in the correct directory.', 'error');
+                return;
             }
-        });
+            
+            const currentUrl = urlsToTry[currentUrlIndex];
+            console.log('Trying URL:', currentUrl);
+            
+            $.ajax({
+                url: currentUrl,
+                method: 'POST',
+                data: formData,
+                dataType: 'json',
+                success: function(response) {
+                    submitBtn.html(originalText).prop('disabled', false);
+                    console.log('Success with URL:', currentUrl, 'Response:', response);
+                    
+                    if (response.success) {
+                        Swal.fire('Success', response.message, 'success');
+                        $('#addAdminModal').modal('hide');
+                        $('#addAdminForm')[0].reset();
+                        setTimeout(() => location.reload(), 1500);
+                    } else {
+                        Swal.fire('Error', response.message, 'error');
+                    }
+                },
+                error: function(xhr, status, error) {
+                    console.log('Failed with URL:', currentUrl, 'Error:', error);
+                    currentUrlIndex++;
+                    tryNextUrl();
+                }
+            });
+        }
+        
+        tryNextUrl();
     });
     
     // Handle edit button click
@@ -552,6 +643,11 @@ $(document).ready(function() {
     $('#editAdminForm').on('submit', function(e) {
         e.preventDefault();
         
+        // Show loading state
+        const submitBtn = $(this).find('button[type="submit"]');
+        const originalText = submitBtn.html();
+        submitBtn.html('<i class="fas fa-spinner fa-spin mr-2"></i>Updating...').prop('disabled', true);
+        
         const formData = $(this).serialize();
         
         // Validate passwords if provided
@@ -561,40 +657,67 @@ $(document).ready(function() {
         if (password || confirmPassword) {
             if (password !== confirmPassword) {
                 Swal.fire('Error', 'Passwords do not match!', 'error');
+                submitBtn.html(originalText).prop('disabled', false);
                 return;
             }
             
             if (password.length < 8) {
                 Swal.fire('Error', 'Password must be at least 8 characters long!', 'error');
+                submitBtn.html(originalText).prop('disabled', false);
                 return;
             }
         }
         
-        console.log('Sending edit admin request:', formData);
+        console.log('Attempting to send request to: endpoint/edit-admin.php');
         
-        $.ajax({
-            url: 'edit-admin.php',
-            method: 'POST',
-            data: formData,
-            dataType: 'json',
-            success: function(response) {
-                console.log('Edit admin response:', response);
-                if (response.success) {
-                    Swal.fire('Success', response.message, 'success');
-                    $('#editAdminModal').modal('hide');
-                    $('#editAdminForm')[0].reset();
-                    setTimeout(() => location.reload(), 1500);
-                } else {
-                    Swal.fire('Error', response.message, 'error');
-                }
-            },
-            error: function(xhr, status, error) {
-                console.error('AJAX Error:', error);
-                console.error('Status:', status);
-                console.error('Response:', xhr.responseText);
-                Swal.fire('Error', 'Network error. Please try again.', 'error');
+        // Try multiple URL formats
+        const urlsToTry = [
+            'endpoint/edit-admin.php',
+            './endpoint/edit-admin.php',
+            '/endpoint/edit-admin.php',
+            'edit-admin.php',
+            './edit-admin.php'
+        ];
+        
+        let currentUrlIndex = 0;
+        
+        function tryNextUrl() {
+            if (currentUrlIndex >= urlsToTry.length) {
+                submitBtn.html(originalText).prop('disabled', false);
+                Swal.fire('Error', 'All endpoint URLs failed. Please check if endpoint files exist in the correct directory.', 'error');
+                return;
             }
-        });
+            
+            const currentUrl = urlsToTry[currentUrlIndex];
+            console.log('Trying URL:', currentUrl);
+            
+            $.ajax({
+                url: currentUrl,
+                method: 'POST',
+                data: formData,
+                dataType: 'json',
+                success: function(response) {
+                    submitBtn.html(originalText).prop('disabled', false);
+                    console.log('Success with URL:', currentUrl, 'Response:', response);
+                    
+                    if (response.success) {
+                        Swal.fire('Success', response.message, 'success');
+                        $('#editAdminModal').modal('hide');
+                        $('#editAdminForm')[0].reset();
+                        setTimeout(() => location.reload(), 1500);
+                    } else {
+                        Swal.fire('Error', response.message, 'error');
+                    }
+                },
+                error: function(xhr, status, error) {
+                    console.log('Failed with URL:', currentUrl, 'Error:', error);
+                    currentUrlIndex++;
+                    tryNextUrl();
+                }
+            });
+        }
+        
+        tryNextUrl();
     });
     
     // Handle change password button click
@@ -612,9 +735,14 @@ $(document).ready(function() {
         $('#changePasswordModal').modal('show');
     });
     
-    // Handle change password form submission
+    // Handle change password form submission - uses edit-admin.php
     $('#changePasswordForm').on('submit', function(e) {
         e.preventDefault();
+        
+        // Show loading state
+        const submitBtn = $(this).find('button[type="submit"]');
+        const originalText = submitBtn.html();
+        submitBtn.html('<i class="fas fa-spinner fa-spin mr-2"></i>Changing...').prop('disabled', true);
         
         const userId = $('#password_user_id').val();
         const password = $('#new_password').val();
@@ -623,46 +751,72 @@ $(document).ready(function() {
         // Validate passwords
         if (password !== confirmPassword) {
             Swal.fire('Error', 'Passwords do not match!', 'error');
+            submitBtn.html(originalText).prop('disabled', false);
             return;
         }
         
         if (password.length < 8) {
             Swal.fire('Error', 'Password must be at least 8 characters long!', 'error');
+            submitBtn.html(originalText).prop('disabled', false);
             return;
         }
         
-        // Simple data for password change
         const formData = {
             user_id: userId,
             password: password,
             confirm_password: confirmPassword
         };
         
-        console.log('Sending change password request:', formData);
+        console.log('Attempting to send request to: endpoint/edit-admin.php');
         
-        $.ajax({
-            url: 'edit-admin.php',
-            method: 'POST',
-            data: formData,
-            dataType: 'json',
-            success: function(response) {
-                console.log('Change password response:', response);
-                if (response.success) {
-                    Swal.fire('Success', 'Password changed successfully!', 'success');
-                    $('#changePasswordModal').modal('hide');
-                    $('#changePasswordForm')[0].reset();
-                    setTimeout(() => location.reload(), 1500);
-                } else {
-                    Swal.fire('Error', response.message, 'error');
-                }
-            },
-            error: function(xhr, status, error) {
-                console.error('AJAX Error:', error);
-                console.error('Status:', status);
-                console.error('Response:', xhr.responseText);
-                Swal.fire('Error', 'Network error. Please try again.', 'error');
+        // Try multiple URL formats
+        const urlsToTry = [
+            'endpoint/edit-admin.php',
+            './endpoint/edit-admin.php',
+            '/endpoint/edit-admin.php',
+            'edit-admin.php',
+            './edit-admin.php'
+        ];
+        
+        let currentUrlIndex = 0;
+        
+        function tryNextUrl() {
+            if (currentUrlIndex >= urlsToTry.length) {
+                submitBtn.html(originalText).prop('disabled', false);
+                Swal.fire('Error', 'All endpoint URLs failed. Please check if endpoint files exist in the correct directory.', 'error');
+                return;
             }
-        });
+            
+            const currentUrl = urlsToTry[currentUrlIndex];
+            console.log('Trying URL:', currentUrl);
+            
+            $.ajax({
+                url: currentUrl,
+                method: 'POST',
+                data: formData,
+                dataType: 'json',
+                success: function(response) {
+                    submitBtn.html(originalText).prop('disabled', false);
+                    console.log('Success with URL:', currentUrl, 'Response:', response);
+                    
+                    if (response.success) {
+                        Swal.fire('Success', 'Password changed successfully!', 'success');
+                        $('#changePasswordModal').modal('hide');
+                        $('#changePasswordForm')[0].reset();
+                        setTimeout(() => location.reload(), 1500);
+                    } else {
+                        Swal.fire('Error', response.message, 'error');
+                    }
+                },
+                error: function(xhr, status, error) {
+                    console.log('Failed with URL:', currentUrl, 'Error:', error);
+                    currentUrlIndex++;
+                    tryNextUrl();
+                }
+            });
+        }
+        
+        tryNextUrl();
     });
     
     // Handle delete button click
@@ -681,29 +835,64 @@ $(document).ready(function() {
             cancelButtonText: 'Cancel'
         }).then((result) => {
             if (result.isConfirmed) {
-                console.log('Sending delete request for user ID:', userId);
-                
-                $.ajax({
-                    url: 'delete-admin.php',
-                    method: 'POST',
-                    data: { user_id: userId },
-                    dataType: 'json',
-                    success: function(response) {
-                        console.log('Delete response:', response);
-                        if (response.success) {
-                            Swal.fire('Deleted!', response.message, 'success');
-                            setTimeout(() => location.reload(), 1500);
-                        } else {
-                            Swal.fire('Error', response.message, 'error');
-                        }
-                    },
-                    error: function(xhr, status, error) {
-                        console.error('AJAX Error:', error);
-                        console.error('Status:', status);
-                        console.error('Response:', xhr.responseText);
-                        Swal.fire('Error', 'Network error. Please try again.', 'error');
+                // Show loading
+                Swal.fire({
+                    title: 'Deleting...',
+                    text: 'Please wait',
+                    allowOutsideClick: false,
+                    didOpen: () => {
+                        Swal.showLoading();
                     }
                 });
+                
+                console.log('Attempting to send request to: endpoint/delete-admin.php');
+                
+                // Try multiple URL formats
+                const urlsToTry = [
+                    'endpoint/delete-admin.php',
+                    './endpoint/delete-admin.php',
+                    '/endpoint/delete-admin.php',
+                    'delete-admin.php',
+                    './delete-admin.php'
+                ];
+                
+                let currentUrlIndex = 0;
+                
+                function tryNextUrl() {
+                    if (currentUrlIndex >= urlsToTry.length) {
+                        Swal.close();
+                        Swal.fire('Error', 'All endpoint URLs failed. Please check if endpoint files exist in the correct directory.', 'error');
+                        return;
+                    }
+                    
+                    const currentUrl = urlsToTry[currentUrlIndex];
+                    console.log('Trying URL:', currentUrl);
+                    
+                    $.ajax({
+                        url: currentUrl,
+                        method: 'POST',
+                        data: { user_id: userId },
+                        dataType: 'json',
+                        success: function(response) {
+                            Swal.close();
+                            console.log('Success with URL:', currentUrl, 'Response:', response);
+                            
+                            if (response.success) {
+                                Swal.fire('Deleted!', response.message, 'success');
+                                setTimeout(() => location.reload(), 1500);
+                            } else {
+                                Swal.fire('Error', response.message, 'error');
+                            }
+                        },
+                        error: function(xhr, status, error) {
+                            console.log('Failed with URL:', currentUrl, 'Error:', error);
+                            currentUrlIndex++;
+                            tryNextUrl();
+                        }
+                    });
+                }
+                
+                tryNextUrl();
             }
         });
     });

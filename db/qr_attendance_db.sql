@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Feb 10, 2026 at 06:15 AM
+-- Generation Time: Feb 11, 2026 at 02:28 AM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.2.12
 
@@ -103,8 +103,9 @@ CREATE TABLE `tbl_users` (
 
 INSERT INTO `tbl_users` (`user_id`, `username`, `email`, `password_hash`, `full_name`, `role`, `created_at`, `updated_at`, `created_by`) VALUES
 (1, 'admin', 'admin@example.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'System Administrator', 'super_admin', '2026-02-09 08:30:37', '2026-02-10 02:29:22', NULL),
-(2, 'superadmin', 'superadmin@gmail.com', 'password', 'superadmin', 'super_admin', '2026-02-10 02:21:10', '2026-02-10 02:21:51', NULL),
-(3, 'CWTS', 'CWTS1@gmail.com', '$2y$10$DTrDah2WaJaAoyBjgqhT0.H071FpS5c2bgW6kBzc0Fqx2KyUFEafu', 'CWTS', 'admin', '2026-02-10 02:28:48', '2026-02-10 02:28:48', NULL);
+(2, 'CWTS', 'client2@gmail.com', '$2y$10$Wt.4NYHkw3yoU0qRjBZXEO6FfKEmSeOBf6q7k5kqcwBRSXrz4mbnW', 'CWTS', 'admin', '2026-02-10 02:21:10', '2026-02-11 01:20:30', NULL),
+(4, 'LTS', 'client1@gmail.com', '$2y$10$XI.L.FvumL9iS2iyAwhdTOeEfPG1UuJOmDoA3R8yFnk1uqEYJA9qi', 'LTS', 'admin', '2026-02-11 01:15:04', '2026-02-11 01:15:40', 1),
+(5, 'ROTC', 'client3@gmail.com', '$2y$10$Bie4mf9QUFmo1p5cTxOmq.LIo7E2Y1c7FXyXlatFMaBy46JaXhrSO', 'ROTC', 'admin', '2026-02-11 01:21:07', '2026-02-11 01:21:07', 1);
 
 --
 -- Indexes for dumped tables
@@ -166,7 +167,7 @@ ALTER TABLE `tbl_student`
 -- AUTO_INCREMENT for table `tbl_users`
 --
 ALTER TABLE `tbl_users`
-  MODIFY `user_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
+  MODIFY `user_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
 COMMIT;
 
 /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
