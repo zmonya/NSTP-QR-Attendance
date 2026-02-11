@@ -6,12 +6,30 @@ if (!isset($_SESSION['user_id'])) {
     exit();
 }
 
-include ('./conn/conn.php');
+include('./conn/conn.php');
 
 // Get user info
 $user_id = $_SESSION['user_id'];
 $user_role = $_SESSION['role'] ?? 'admin';
 $user_name = $_SESSION['full_name'] ?? 'User';
+
+// Get admin's assigned section(s)
+$stmt = $conn->prepare("
+    SELECT a.course_section 
+    FROM tbl_admin_sections a 
+    WHERE a.user_id = ? 
+    ORDER BY a.assigned_at ASC 
+    LIMIT 1
+");
+$stmt->execute([$user_id]);
+$assignedSection = $stmt->fetchColumn();
+
+// If no assigned section, check assigned_section field in tbl_users
+if (!$assignedSection) {
+    $stmt = $conn->prepare("SELECT assigned_section FROM tbl_users WHERE user_id = ?");
+    $stmt->execute([$user_id]);
+    $assignedSection = $stmt->fetchColumn();
+}
 
 // Prepare query based on role
 if ($user_role === 'super_admin') {
@@ -64,6 +82,7 @@ if ($user_role === 'super_admin') {
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/admin-lte@3.2/dist/css/adminlte.min.css">
     <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap4.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css">
     
     <style>
         .student-table {
@@ -89,6 +108,32 @@ if ($user_role === 'super_admin') {
         .permission-badge {
             font-size: 0.75rem;
             padding: 3px 8px;
+        }
+        
+        .section-info {
+            font-size: 0.9rem;
+            background: #e3f2fd;
+            border-left: 4px solid #2196f3;
+            padding: 10px 15px;
+            margin-bottom: 15px;
+            border-radius: 4px;
+        }
+        
+        .section-badge-large {
+            font-size: 1rem;
+            padding: 8px 15px;
+            margin: 0 5px;
+        }
+        
+        .btn-spinner {
+            position: relative;
+            padding-left: 40px !important;
+        }
+        .btn-spinner .fa-spinner {
+            position: absolute;
+            left: 15px;
+            top: 50%;
+            transform: translateY(-50%);
         }
     </style>
 </head>
@@ -204,15 +249,50 @@ if ($user_role === 'super_admin') {
                     <?php endif; ?>
                 </div>
 
+                <!-- Section Information for Regular Admins -->
+                <?php if ($user_role === 'admin'): ?>
+                <div class="row mb-3">
+                    <div class="col-12">
+                        <div class="section-info">
+                            <i class="fas fa-info-circle mr-2"></i>
+                            <strong>Section Assignment:</strong>
+                            <?php if ($assignedSection): ?>
+                                You are assigned to section: 
+                                <span class="badge badge-primary section-badge-large">
+                                    <?php echo htmlspecialchars($assignedSection); ?>
+                                </span>
+                                <br>
+                                <small class="text-muted">
+                                    <i class="fas fa-user-check mr-1"></i>
+                                    All students you add will automatically be assigned to this section.
+                                </small>
+                            <?php else: ?>
+                                <span class="text-danger">
+                                    <i class="fas fa-exclamation-triangle mr-1"></i>
+                                    You are not assigned to any section. Please contact super admin.
+                                </span>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                </div>
+                <?php endif; ?>
+
                 <!-- Action Buttons -->
                 <div class="row mb-3">
                     <div class="col-12">
                         <button class="btn btn-success" data-toggle="modal" data-target="#importExcelModal">
                             <i class="fas fa-file-excel mr-2"></i> Import Excel
                         </button>
-                        <button class="btn btn-primary float-right" data-toggle="modal" data-target="#addStudentModal">
+                        <button class="btn btn-primary float-right" data-toggle="modal" data-target="#addStudentModal" 
+                                <?php echo ($user_role === 'admin' && !$assignedSection) ? 'disabled' : ''; ?>>
                             <i class="fas fa-plus mr-2"></i> Add Student
                         </button>
+                        <?php if ($user_role === 'admin' && !$assignedSection): ?>
+                        <small class="text-danger d-block mt-1">
+                            <i class="fas fa-exclamation-circle mr-1"></i>
+                            You cannot add students until you are assigned a section.
+                        </small>
+                        <?php endif; ?>
                     </div>
                 </div>
 
@@ -227,6 +307,9 @@ if ($user_role === 'super_admin') {
                         <?php else: ?>
                         <div class="card-tools">
                             <span class="badge badge-primary">Viewing: My Students Only</span>
+                            <?php if ($assignedSection): ?>
+                            <span class="badge badge-success ml-2">Section: <?php echo htmlspecialchars($assignedSection); ?></span>
+                            <?php endif; ?>
                         </div>
                         <?php endif; ?>
                     </div>
@@ -348,20 +431,42 @@ if ($user_role === 'super_admin') {
             <div class="modal-header">
                 <h5 class="modal-title">Add Student</h5>
                 <small class="text-muted ml-2">(Will be added under your account)</small>
+                <?php if ($user_role === 'admin' && $assignedSection): ?>
+                <span class="badge badge-info ml-2">Section: <?php echo htmlspecialchars($assignedSection); ?></span>
+                <?php endif; ?>
                 <button type="button" class="close" data-dismiss="modal">
                     <span>&times;</span>
                 </button>
             </div>
             <div class="modal-body">
-                <form action="./endpoint/add-student.php" method="POST">
+                <form action="./endpoint/add-student.php" method="POST" id="addStudentForm">
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle mr-2"></i>
+                        <?php if ($user_role === 'super_admin'): ?>
+                        As a super admin, you can add students to any section. Please specify the course section.
+                        <?php else: ?>
+                        Student will be automatically assigned to your section: <strong><?php echo htmlspecialchars($assignedSection); ?></strong>
+                        <?php endif; ?>
+                    </div>
+                    
                     <div class="form-group">
                         <label for="studentName">Full Name:</label>
                         <input type="text" class="form-control" id="studentName" name="student_name" required>
                     </div>
+                    
+                    <?php if ($user_role === 'super_admin'): ?>
                     <div class="form-group">
                         <label for="studentCourse">Course and Section:</label>
                         <input type="text" class="form-control" id="studentCourse" name="course_section" required>
                     </div>
+                    <?php else: ?>
+                    <input type="hidden" name="course_section" value="<?php echo htmlspecialchars($assignedSection); ?>">
+                    <div class="alert alert-primary">
+                        <i class="fas fa-check-circle mr-2"></i>
+                        <strong>Auto-assigned Section:</strong> <?php echo htmlspecialchars($assignedSection); ?>
+                    </div>
+                    <?php endif; ?>
+                    
                     <button type="button" class="btn btn-secondary form-control" onclick="generateQrCode()">
                         <i class="fas fa-qrcode mr-2"></i> Generate QR Code
                     </button>
@@ -373,7 +478,9 @@ if ($user_role === 'super_admin') {
                     </div>
                     <div class="modal-footer" style="display: none;" id="addModalFooter">
                         <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
-                        <button type="submit" class="btn btn-primary">Add Student</button>
+                        <button type="submit" class="btn btn-primary" id="addStudentBtn">
+                            Add Student
+                        </button>
                     </div>
                 </form>
             </div>
@@ -392,19 +499,30 @@ if ($user_role === 'super_admin') {
                 </button>
             </div>
             <div class="modal-body">
-                <form action="./endpoint/update-student.php" method="POST">
+                <form action="./endpoint/update-student.php" method="POST" id="updateStudentForm">
                     <input type="hidden" class="form-control" id="updateStudentId" name="tbl_student_id">
+                    
                     <div class="form-group">
                         <label for="updateStudentName">Full Name:</label>
                         <input type="text" class="form-control" id="updateStudentName" name="student_name" required>
                     </div>
+                    
+                    <?php if ($user_role === 'super_admin'): ?>
                     <div class="form-group">
                         <label for="updateStudentCourse">Course and Section:</label>
                         <input type="text" class="form-control" id="updateStudentCourse" name="course_section" required>
                     </div>
+                    <?php else: ?>
+                    <input type="hidden" id="updateStudentCourse" name="course_section" value="<?php echo htmlspecialchars($assignedSection); ?>">
+                    <div class="alert alert-primary">
+                        <i class="fas fa-lock mr-2"></i>
+                        <strong>Section:</strong> <?php echo htmlspecialchars($assignedSection); ?> (Cannot be changed)
+                    </div>
+                    <?php endif; ?>
+                    
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
-                        <button type="submit" class="btn btn-primary">Update</button>
+                        <button type="submit" class="btn btn-primary" id="updateStudentBtn">Update</button>
                     </div>
                 </form>
             </div>
@@ -419,24 +537,40 @@ if ($user_role === 'super_admin') {
             <div class="modal-header">
                 <h5 class="modal-title">Import Students from Excel</h5>
                 <small class="text-muted ml-2">(Will be added under your account)</small>
+                <?php if ($user_role === 'admin' && $assignedSection): ?>
+                <span class="badge badge-info ml-2">Section: <?php echo htmlspecialchars($assignedSection); ?></span>
+                <?php endif; ?>
                 <button type="button" class="close" data-dismiss="modal">
                     <span>&times;</span>
                 </button>
             </div>
             <div class="modal-body">
                 <form id="importExcelForm">
+                    <?php if ($user_role === 'admin' && !$assignedSection): ?>
+                    <div class="alert alert-danger">
+                        <i class="fas fa-exclamation-triangle mr-2"></i>
+                        You are not assigned to any section. Please contact super admin before importing students.
+                    </div>
+                    <?php endif; ?>
+                    
                     <div class="form-group">
                         <label for="excel_file">Select Excel File:</label>
-                        <input type="file" class="form-control-file" id="excel_file" name="excel_file" accept=".xlsx,.xls" required>
+                        <input type="file" class="form-control-file" id="excel_file" name="excel_file" accept=".xlsx,.xls" 
+                               <?php echo ($user_role === 'admin' && !$assignedSection) ? 'disabled' : 'required'; ?>>
                         <small class="form-text text-muted">
                             Supported formats: .xlsx, .xls<br>
-                            Expected columns: Student Name (Column A), Course & Section (Column B)
+                            Expected columns: Student Name (Column A)<?php if ($user_role === 'super_admin'): ?>, Course & Section (Column B)<?php endif; ?>
                         </small>
                     </div>
                     <div class="alert alert-info">
                         <strong>Note:</strong> Make sure your Excel file has the following columns:<br>
                         <strong>Column A:</strong> Student Full Name<br>
-                        <strong>Column B:</strong> Course and Section
+                        <?php if ($user_role === 'super_admin'): ?>
+                        <strong>Column B:</strong> Course and Section (Required for each student)<br>
+                        <?php else: ?>
+                        <strong>Column B:</strong> Course and Section (Optional - will use your assigned section if empty)<br>
+                        <small class="text-muted">Your assigned section: <strong><?php echo htmlspecialchars($assignedSection); ?></strong></small>
+                        <?php endif; ?>
                     </div>
                     <div class="progress" style="display: none;" id="importProgress">
                         <div class="progress-bar" role="progressbar" style="width: 0%"></div>
@@ -445,7 +579,10 @@ if ($user_role === 'super_admin') {
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-success" onclick="importExcel()">Import Students</button>
+                <button type="button" class="btn btn-success" onclick="importExcel()" 
+                        <?php echo ($user_role === 'admin' && !$assignedSection) ? 'disabled' : ''; ?> id="importExcelBtn">
+                    <i class="fas fa-file-import mr-2"></i> Import Students
+                </button>
             </div>
         </div>
     </div>
@@ -457,6 +594,7 @@ if ($user_role === 'super_admin') {
 <script src="https://cdn.jsdelivr.net/npm/admin-lte@3.2/dist/js/adminlte.min.js"></script>
 <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
 <script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap4.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.js"></script>
 
 <script>
 $(document).ready(function() {
@@ -487,9 +625,19 @@ function updateStudent(id) {
 }
 
 function deleteStudent(id) {
-    if (confirm("Are you sure you want to delete this student?")) {
-        window.location = "./endpoint/delete-student.php?student=" + id;
-    }
+    Swal.fire({
+        title: 'Are you sure?',
+        text: "You won't be able to revert this!",
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#d33',
+        cancelButtonColor: '#3085d6',
+        confirmButtonText: 'Yes, delete it!'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            window.location = "./endpoint/delete-student.php?student=" + id;
+        }
+    });
 }
 
 function generateRandomCode(length) {
@@ -505,24 +653,40 @@ function generateRandomCode(length) {
 function generateQrCode() {
     const qrImg = document.getElementById('qrImg');
     const studentName = document.getElementById('studentName').value.trim();
-    const studentCourse = document.getElementById('studentCourse').value.trim();
     
-    if (!studentName || !studentCourse) {
-        alert("Please enter student name and course section first!");
+    if (!studentName) {
+        Swal.fire('Error', 'Please enter student name first!', 'error');
         return;
     }
+    
+    // Check if regular admin has assigned section
+    <?php if ($user_role === 'admin' && !$assignedSection): ?>
+    Swal.fire('Error', 'You are not assigned to any section. Please contact super admin.', 'error');
+    return;
+    <?php endif; ?>
+    
+    // For super admin, check course section
+    <?php if ($user_role === 'super_admin'): ?>
+    const studentCourse = document.getElementById('studentCourse').value.trim();
+    if (!studentCourse) {
+        Swal.fire('Error', 'Please enter course section for the student!', 'error');
+        return;
+    }
+    <?php endif; ?>
     
     let text = generateRandomCode(10);
     $("#generatedCode").val(text);
 
     if (text === "") {
-        alert("Please enter text to generate a QR code.");
+        Swal.fire('Error', 'Failed to generate QR code!', 'error');
         return;
     } else {
         const apiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(text)}`;
         qrImg.src = apiUrl;
         document.getElementById('studentName').style.pointerEvents = 'none';
+        <?php if ($user_role === 'super_admin'): ?>
         document.getElementById('studentCourse').style.pointerEvents = 'none';
+        <?php endif; ?>
         document.getElementById('addModalFooter').style.display = 'flex';
         document.querySelector('.qr-con').style.display = 'block';
     }
@@ -534,7 +698,7 @@ function importExcel() {
     const fileInput = document.getElementById('excel_file');
     
     if (!fileInput.files.length) {
-        alert('Please select an Excel file to import.');
+        Swal.fire('Error', 'Please select an Excel file to import.', 'error');
         return;
     }
 
@@ -542,11 +706,12 @@ function importExcel() {
     const validTypes = ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel'];
     
     if (!validTypes.includes(file.type)) {
-        alert('Please select a valid Excel file (.xlsx or .xls).');
+        Swal.fire('Error', 'Please select a valid Excel file (.xlsx or .xls).', 'error');
         return;
     }
 
-    const submitBtn = document.querySelector('[onclick="importExcel()"]');
+    const submitBtn = document.getElementById('importExcelBtn');
+    const originalHtml = submitBtn.innerHTML;
     submitBtn.disabled = true;
     submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Importing...';
 
@@ -557,32 +722,179 @@ function importExcel() {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            alert(data.message);
-            $('#importExcelModal').modal('hide');
-            location.reload();
+            Swal.fire('Success', data.message, 'success').then(() => {
+                $('#importExcelModal').modal('hide');
+                location.reload();
+            });
         } else {
-            alert('Error: ' + data.message);
+            Swal.fire('Error', data.message, 'error');
         }
     })
     .catch(error => {
         console.error('Error:', error);
-        alert('An error occurred while importing the file.');
+        Swal.fire('Error', 'An error occurred while importing the file.', 'error');
     })
     .finally(() => {
         submitBtn.disabled = false;
-        submitBtn.innerHTML = 'Import Students';
+        submitBtn.innerHTML = originalHtml;
     });
 }
+
+// Handle modal cleanup
+$('#addStudentModal').on('hidden.bs.modal', function () {
+    // Reset form
+    const form = document.getElementById('addStudentForm');
+    if (form) {
+        form.reset();
+        const qrCon = document.querySelector('.qr-con');
+        if (qrCon) qrCon.style.display = 'none';
+        const footer = document.getElementById('addModalFooter');
+        if (footer) footer.style.display = 'none';
+        const nameField = document.getElementById('studentName');
+        if (nameField) nameField.style.pointerEvents = 'auto';
+        <?php if ($user_role === 'super_admin'): ?>
+        const courseField = document.getElementById('studentCourse');
+        if (courseField) courseField.style.pointerEvents = 'auto';
+        <?php endif; ?>
+    }
+    // Reset submit button
+    const submitBtn = document.getElementById('addStudentBtn');
+    if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = 'Add Student';
+        submitBtn.classList.remove('btn-spinner');
+    }
+});
 
 $('#importExcelModal').on('hidden.bs.modal', function () {
     document.getElementById('importExcelForm').reset();
 });
 
-// Function to check if user can modify student (for confirmation dialogs)
-function checkPermissionBeforeAction(studentId, action) {
-    // You could implement an AJAX check here if needed
-    return true; // For now, rely on backend validation
-}
+// Handle form submissions with AJAX
+$('#addStudentForm').on('submit', function(e) {
+    e.preventDefault();
+    
+    const form = $(this);
+    const submitBtn = document.getElementById('addStudentBtn');
+    const originalText = submitBtn.innerHTML;
+    
+    // Disable button and show spinner
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Adding...';
+    submitBtn.classList.add('btn-spinner');
+    
+    // Get form data
+    const formData = new FormData();
+    formData.append('student_name', $('#studentName').val());
+    formData.append('generated_code', $('#generatedCode').val());
+    
+    <?php if ($user_role === 'super_admin'): ?>
+    formData.append('course_section', $('#studentCourse').val());
+    <?php else: ?>
+    formData.append('course_section', '<?php echo htmlspecialchars($assignedSection); ?>');
+    <?php endif; ?>
+    
+    // Simple validation
+    if (!$('#generatedCode').val()) {
+        Swal.fire('Error', 'Please generate QR code first!', 'error');
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = originalText;
+        submitBtn.classList.remove('btn-spinner');
+        return;
+    }
+    
+    // Send AJAX request
+    $.ajax({
+        url: './endpoint/add-student.php',
+        method: 'POST',
+        data: form.serialize(),
+        dataType: 'json',
+        success: function(response) {
+            console.log('Response:', response);
+            
+            if (response.success) {
+                // Show success message
+                Swal.fire({
+                    icon: 'success',
+                    title: 'Success!',
+                    text: response.message,
+                    showConfirmButton: true,
+                    timer: 2000
+                }).then(() => {
+                    // Close modal
+                    $('#addStudentModal').modal('hide');
+                    
+                    // Reload page after short delay
+                    setTimeout(() => {
+                        location.reload();
+                    }, 500);
+                });
+            } else {
+                // Show error message
+                Swal.fire('Error', response.message, 'error');
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = originalText;
+                submitBtn.classList.remove('btn-spinner');
+            }
+        },
+        error: function(xhr, status, error) {
+            console.error('AJAX Error:', xhr.responseText);
+            Swal.fire('Error', 'Failed to connect to server. Please try again.', 'error');
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = originalText;
+            submitBtn.classList.remove('btn-spinner');
+        }
+    });
+});
+
+$('#updateStudentForm').on('submit', function(e) {
+    e.preventDefault();
+    
+    const form = $(this);
+    const submitBtn = document.getElementById('updateStudentBtn');
+    const originalText = submitBtn.innerHTML;
+    
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Updating...';
+    submitBtn.classList.add('btn-spinner');
+    
+    $.ajax({
+        url: './endpoint/update-student.php',
+        method: 'POST',
+        data: form.serialize(),
+        dataType: 'json',
+        success: function(response) {
+            if (response.success) {
+                Swal.fire({
+                    icon: 'success',
+                    title: 'Updated!',
+                    text: response.message,
+                    timer: 1500,
+                    showConfirmButton: false
+                }).then(() => {
+                    location.reload();
+                });
+            } else {
+                Swal.fire('Error', response.message, 'error');
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = originalText;
+                submitBtn.classList.remove('btn-spinner');
+            }
+        },
+        error: function() {
+            Swal.fire('Error', 'Failed to update student. Please try again.', 'error');
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = originalText;
+            submitBtn.classList.remove('btn-spinner');
+        }
+    });
+});
+
+// JavaScript error handler
+window.onerror = function(message, source, lineno, colno, error) {
+    console.error('JavaScript Error:', message, 'at', source, 'line', lineno);
+    return true;
+};
 </script>
 </body>
 </html>
