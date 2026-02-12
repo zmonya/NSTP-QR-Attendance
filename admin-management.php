@@ -550,8 +550,7 @@ include('./conn/conn.php');
                                         </button>
                                     </div>
                                 </div>
-                                <small class="form-text text-muted">Example: BSIS 4B, BSIT 4A, etc.</small>
-                            </div>
+                                
                         </div>
                     </div>
                     

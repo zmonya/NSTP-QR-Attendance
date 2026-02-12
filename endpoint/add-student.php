@@ -8,6 +8,12 @@ header('Content-Type: application/json');
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
 
+// Debug: Log all received data
+error_log("=== ADD STUDENT DEBUG ===");
+error_log("POST data: " . print_r($_POST, true));
+error_log("SESSION: " . print_r($_SESSION, true));
+error_log("REQUEST_METHOD: " . $_SERVER['REQUEST_METHOD']);
+
 if (!isset($_SESSION['user_id'])) {
     echo json_encode(['success' => false, 'message' => 'Unauthorized access']);
     exit();

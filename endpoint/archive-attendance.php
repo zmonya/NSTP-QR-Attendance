@@ -1,97 +1,125 @@
 <?php
-// Include database connection
-require_once '../conn/conn.php';
+session_start();
 
-// Set JSON header
 header('Content-Type: application/json');
 
-// Get input data
-$input = json_decode(file_get_contents('php://input'), true);
+error_reporting(E_ALL);
+ini_set('display_errors', 0);
 
-// Validate required fields
-if (!isset($input['archive_date'])) {
-    echo json_encode(['success' => false, 'message' => 'Archive date is required']);
-    exit;
+if (!isset($_SESSION['user_id'])) {
+    echo json_encode(['success' => false, 'message' => 'Unauthorized access']);
+    exit();
 }
 
-$archiveDate = $input['archive_date'];
+include('../conn/conn.php');
+
+$response = ['success' => false, 'message' => ''];
 
 try {
-    // Start transaction
+    // Get JSON input
+    $input = json_decode(file_get_contents('php://input'), true);
+    
+    if (!$input) {
+        throw new Exception('Invalid JSON input');
+    }
+    
+    $archive_date = $input['archive_date'] ?? null;
+    
+    if (!$archive_date) {
+        throw new Exception('Archive date is required');
+    }
+    
+    $user_id = $_SESSION['user_id'];
+    $role = $_SESSION['role'] ?? 'admin';
+    
     $conn->beginTransaction();
     
-    // Create archive table if it doesn't exist
-    $createTableSQL = "CREATE TABLE IF NOT EXISTS tbl_attendance_archive (
-        tbl_attendance_archive_id INT AUTO_INCREMENT PRIMARY KEY,
-        tbl_attendance_id INT NOT NULL,
-        tbl_student_id INT NOT NULL,
-        time_in TIMESTAMP NOT NULL,
-        archived_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        INDEX idx_student_id (tbl_student_id),
-        INDEX idx_time_in (time_in),
-        INDEX idx_archived_date (archived_date)
-    )";
-    
-    $conn->exec($createTableSQL);
-    
-    // Get records to archive (records from the specified date and earlier)
-    $selectSQL = "SELECT * FROM tbl_attendance 
-                  WHERE DATE(time_in) <= :archive_date 
-                  ORDER BY time_in ASC";
-    
-    $stmt = $conn->prepare($selectSQL);
-    $stmt->bindParam(':archive_date', $archiveDate);
-    $stmt->execute();
-    $recordsToArchive = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    
-    $archivedCount = 0;
-    
-    if (count($recordsToArchive) > 0) {
-        // Insert into archive table
-        $insertSQL = "INSERT INTO tbl_attendance_archive 
-                     (tbl_attendance_id, tbl_student_id, time_in) 
-                     VALUES (:attendance_id, :student_id, :time_in)";
+    if ($role === 'super_admin') {
+        // Super admin can archive all records
+        $stmt = $conn->prepare("
+            SELECT a.*, s.student_name, s.course_section 
+            FROM tbl_attendance a
+            JOIN tbl_student s ON a.tbl_student_id = s.tbl_student_id
+            WHERE DATE(a.time_in) <= ?
+        ");
+        $stmt->execute([$archive_date]);
+        $records_to_archive = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
-        $insertStmt = $conn->prepare($insertSQL);
-        
-        // Delete from main table
-        $deleteSQL = "DELETE FROM tbl_attendance 
-                     WHERE tbl_attendance_id = :attendance_id";
-        
-        $deleteStmt = $conn->prepare($deleteSQL);
-        
-        foreach ($recordsToArchive as $record) {
-            // Archive the record
-            $insertStmt->bindParam(':attendance_id', $record['tbl_attendance_id']);
-            $insertStmt->bindParam(':student_id', $record['tbl_student_id']);
-            $insertStmt->bindParam(':time_in', $record['time_in']);
-            $insertStmt->execute();
+        foreach ($records_to_archive as $record) {
+            // Insert into archive
+            $archive_stmt = $conn->prepare("
+                INSERT INTO tbl_attendance_archive (tbl_attendance_id, tbl_student_id, time_in, archived_date)
+                VALUES (?, ?, ?, NOW())
+            ");
+            $archive_stmt->execute([
+                $record['tbl_attendance_id'],
+                $record['tbl_student_id'],
+                $record['time_in']
+            ]);
             
             // Delete from main table
-            $deleteStmt->bindParam(':attendance_id', $record['tbl_attendance_id']);
-            $deleteStmt->execute();
+            $delete_stmt = $conn->prepare("DELETE FROM tbl_attendance WHERE tbl_attendance_id = ?");
+            $delete_stmt->execute([$record['tbl_attendance_id']]);
+        }
+        
+        $archived_count = count($records_to_archive);
+        
+    } else {
+        // Regular admin - only archive records of their students
+        $stmt = $conn->prepare("
+            SELECT tbl_student_id 
+            FROM tbl_student 
+            WHERE created_by = ?
+        ");
+        $stmt->execute([$user_id]);
+        $student_ids = $stmt->fetchAll(PDO::FETCH_COLUMN);
+        
+        if (empty($student_ids)) {
+            $archived_count = 0;
+        } else {
+            $placeholders = str_repeat('?,', count($student_ids) - 1) . '?';
             
-            $archivedCount++;
+            $stmt = $conn->prepare("
+                SELECT a.*, s.student_name, s.course_section 
+                FROM tbl_attendance a
+                JOIN tbl_student s ON a.tbl_student_id = s.tbl_student_id
+                WHERE a.tbl_student_id IN ($placeholders)
+                AND DATE(a.time_in) <= ?
+            ");
+            $params = array_merge($student_ids, [$archive_date]);
+            $stmt->execute($params);
+            $records_to_archive = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            
+            foreach ($records_to_archive as $record) {
+                $archive_stmt = $conn->prepare("
+                    INSERT INTO tbl_attendance_archive (tbl_attendance_id, tbl_student_id, time_in, archived_date)
+                    VALUES (?, ?, ?, NOW())
+                ");
+                $archive_stmt->execute([
+                    $record['tbl_attendance_id'],
+                    $record['tbl_student_id'],
+                    $record['time_in']
+                ]);
+                
+                $delete_stmt = $conn->prepare("DELETE FROM tbl_attendance WHERE tbl_attendance_id = ?");
+                $delete_stmt->execute([$record['tbl_attendance_id']]);
+            }
+            
+            $archived_count = count($records_to_archive);
         }
     }
     
-    // Commit transaction
     $conn->commit();
     
-    echo json_encode([
-        'success' => true,
-        'message' => "Successfully archived $archivedCount attendance records",
-        'archived_count' => $archivedCount,
-        'archive_date' => $archiveDate
-    ]);
+    $response['success'] = true;
+    $response['message'] = "Successfully archived $archived_count record(s)";
     
 } catch (Exception $e) {
-    // Rollback transaction on error
-    $conn->rollback();
-    
-    echo json_encode([
-        'success' => false,
-        'message' => 'Error archiving attendance: ' . $e->getMessage()
-    ]);
+    $conn->rollBack();
+    error_log("Error in archive-attendance.php: " . $e->getMessage());
+    $response['message'] = 'Error: ' . $e->getMessage();
 }
-?>
+
+echo json_encode($response);
+exit();
+?>  
