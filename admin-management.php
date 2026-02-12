@@ -35,6 +35,15 @@ include('./conn/conn.php');
             color: white;
             font-size: 1.5rem;
             font-weight: bold;
+            object-fit: cover;
+        }
+        .admin-avatar-img {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 2px solid #fff;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
         }
         .role-badge {
             font-size: 0.8rem;
@@ -73,6 +82,28 @@ include('./conn/conn.php');
             font-size: 0.75rem;
             line-height: 1.5;
             border-radius: 0.2rem;
+        }
+        /* Profile picture in modals */
+        .profile-preview {
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 3px solid #fff;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .profile-initials-lg {
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 2.5rem;
+            font-weight: bold;
+            margin: 0 auto;
         }
     </style>
 </head>
@@ -226,18 +257,34 @@ include('./conn/conn.php');
                                         $admins = $stmt->fetchAll();
                                         
                                         foreach ($admins as $admin):
-                                            $initials = strtoupper(substr($admin['full_name'], 0, 2));
+                                            $initials = '';
+                                            if (!empty($admin['full_name'])) {
+                                                $nameParts = explode(' ', $admin['full_name']);
+                                                $initials = strtoupper(substr($nameParts[0], 0, 1));
+                                                if (isset($nameParts[1])) {
+                                                    $initials .= strtoupper(substr($nameParts[1], 0, 1));
+                                                }
+                                            }
                                             $roleClass = $admin['role'] === 'super_admin' ? 'danger' : 'primary';
                                             $createdDate = new DateTime($admin['created_at']);
                                             $assignedSections = $admin['assigned_sections_list'] ? explode(',', $admin['assigned_sections_list']) : [];
+                                            
+                                            // Check if profile picture exists
+                                            $hasProfilePic = !empty($admin['profile_picture']) && file_exists($admin['profile_picture']);
                                         ?>
                                         <tr>
                                             <td><?php echo $admin['user_id']; ?></td>
                                             <td>
                                                 <div class="d-flex align-items-center">
-                                                    <div class="admin-avatar mr-3">
-                                                        <?php echo $initials; ?>
-                                                    </div>
+                                                    <?php if ($hasProfilePic): ?>
+                                                        <img src="<?php echo htmlspecialchars($admin['profile_picture']); ?>?v=<?php echo time(); ?>" 
+                                                             alt="<?php echo htmlspecialchars($admin['full_name']); ?>" 
+                                                             class="admin-avatar-img mr-3">
+                                                    <?php else: ?>
+                                                        <div class="admin-avatar mr-3">
+                                                            <?php echo $initials; ?>
+                                                        </div>
+                                                    <?php endif; ?>
                                                     <div>
                                                         <strong><?php echo htmlspecialchars($admin['full_name']); ?></strong>
                                                     </div>
@@ -273,7 +320,8 @@ include('./conn/conn.php');
                                                             data-name="<?php echo htmlspecialchars($admin['full_name']); ?>"
                                                             data-username="<?php echo htmlspecialchars($admin['username']); ?>"
                                                             data-email="<?php echo htmlspecialchars($admin['email']); ?>"
-                                                            data-role="<?php echo $admin['role']; ?>">
+                                                            data-role="<?php echo $admin['role']; ?>"
+                                                            data-profile="<?php echo $hasProfilePic ? htmlspecialchars($admin['profile_picture']) : ''; ?>">
                                                         <i class="fas fa-edit"></i>
                                                     </button>
                                                     <button class="btn btn-sm btn-warning change-password" 
@@ -328,19 +376,28 @@ include('./conn/conn.php');
                     <span aria-hidden="true">&times;</span>
                 </button>
             </div>
-            <form id="addAdminForm" method="POST">
+            <form id="addAdminForm" method="POST" enctype="multipart/form-data">
                 <div class="modal-body">
+                    <div class="text-center mb-4">
+                        <div id="addProfilePreviewContainer" class="d-none">
+                            <img id="addProfilePreview" src="#" alt="Profile Preview" class="profile-preview">
+                        </div>
+                        <div id="addProfileInitialsContainer">
+                            <div class="profile-initials-lg">AD</div>
+                        </div>
+                    </div>
+                    
                     <div class="row">
                         <div class="col-md-6">
                             <div class="form-group">
-                                <label for="full_name">Full Name *</label>
-                                <input type="text" class="form-control" id="full_name" name="full_name" required>
+                                <label for="add_full_name">Full Name *</label>
+                                <input type="text" class="form-control" id="add_full_name" name="full_name" required>
                             </div>
                         </div>
                         <div class="col-md-6">
                             <div class="form-group">
-                                <label for="username">Username *</label>
-                                <input type="text" class="form-control" id="username" name="username" required>
+                                <label for="add_username">Username *</label>
+                                <input type="text" class="form-control" id="add_username" name="username" required>
                                 <small class="form-text text-muted">Must be unique</small>
                             </div>
                         </div>
@@ -349,14 +406,14 @@ include('./conn/conn.php');
                     <div class="row">
                         <div class="col-md-6">
                             <div class="form-group">
-                                <label for="email">Email Address *</label>
-                                <input type="email" class="form-control" id="email" name="email" required>
+                                <label for="add_email">Email Address *</label>
+                                <input type="email" class="form-control" id="add_email" name="email" required>
                             </div>
                         </div>
                         <div class="col-md-6">
                             <div class="form-group">
-                                <label for="role">Role *</label>
-                                <select class="form-control" id="role" name="role" required>
+                                <label for="add_role">Role *</label>
+                                <select class="form-control" id="add_role" name="role" required>
                                     <option value="admin">Administrator</option>
                                     <option value="super_admin">Super Administrator</option>
                                 </select>
@@ -367,15 +424,28 @@ include('./conn/conn.php');
                     <div class="row">
                         <div class="col-md-6">
                             <div class="form-group">
-                                <label for="password">Password *</label>
-                                <input type="password" class="form-control" id="password" name="password" required>
+                                <label for="add_password">Password *</label>
+                                <input type="password" class="form-control" id="add_password" name="password" required>
                                 <small class="form-text text-muted">Minimum 8 characters</small>
                             </div>
                         </div>
                         <div class="col-md-6">
                             <div class="form-group">
-                                <label for="confirm_password">Confirm Password *</label>
-                                <input type="password" class="form-control" id="confirm_password" name="confirm_password" required>
+                                <label for="add_confirm_password">Confirm Password *</label>
+                                <input type="password" class="form-control" id="add_confirm_password" name="confirm_password" required>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-12">
+                            <div class="form-group">
+                                <label for="add_profile_picture">Profile Picture (Optional)</label>
+                                <div class="custom-file">
+                                    <input type="file" class="custom-file-input" id="add_profile_picture" name="profile_picture" accept="image/*">
+                                    <label class="custom-file-label" for="add_profile_picture">Choose file</label>
+                                </div>
+                                <small class="form-text text-muted">Allowed: JPG, JPEG, PNG, GIF. Max 2MB.</small>
                             </div>
                         </div>
                     </div>
@@ -403,9 +473,18 @@ include('./conn/conn.php');
                     <span aria-hidden="true">&times;</span>
                 </button>
             </div>
-            <form id="editAdminForm" method="POST">
+            <form id="editAdminForm" method="POST" enctype="multipart/form-data">
                 <input type="hidden" id="edit_user_id" name="user_id">
                 <div class="modal-body">
+                    <div class="text-center mb-4">
+                        <div id="editProfilePreviewContainer">
+                            <img id="editProfilePreview" src="#" alt="Profile Preview" class="profile-preview">
+                        </div>
+                        <div id="editProfileInitialsContainer" class="d-none">
+                            <div class="profile-initials-lg"></div>
+                        </div>
+                    </div>
+                    
                     <div class="row">
                         <div class="col-md-6">
                             <div class="form-group">
@@ -456,6 +535,25 @@ include('./conn/conn.php');
                             <div class="form-group">
                                 <label for="edit_confirm_password">Confirm New Password</label>
                                 <input type="password" class="form-control" id="edit_confirm_password" name="confirm_password">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-12">
+                            <div class="form-group">
+                                <label for="edit_profile_picture">Change Profile Picture</label>
+                                <div class="custom-file">
+                                    <input type="file" class="custom-file-input" id="edit_profile_picture" name="profile_picture" accept="image/*">
+                                    <label class="custom-file-label" for="edit_profile_picture">Choose new file</label>
+                                </div>
+                                <small class="form-text text-muted">Leave empty to keep current picture. Allowed: JPG, JPEG, PNG, GIF. Max 2MB.</small>
+                            </div>
+                            <div class="form-check mt-2">
+                                <input type="checkbox" class="form-check-input" id="remove_profile_picture" name="remove_profile_picture">
+                                <label class="form-check-label text-danger" for="remove_profile_picture">
+                                    <i class="fas fa-trash-alt mr-1"></i> Remove current profile picture
+                                </label>
                             </div>
                         </div>
                     </div>
@@ -550,7 +648,7 @@ include('./conn/conn.php');
                                         </button>
                                     </div>
                                 </div>
-                                
+                            </div>
                         </div>
                     </div>
                     
@@ -586,9 +684,13 @@ include('./conn/conn.php');
 <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
 <script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap4.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.all.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bs-custom-file-input/dist/bs-custom-file-input.min.js"></script>
 
 <script>
 $(document).ready(function() {
+    // Initialize bs-custom-file-input for file upload styling
+    bsCustomFileInput.init();
+    
     // Initialize DataTable
     $('#adminsTable').DataTable({
         "paging": true,
@@ -600,8 +702,60 @@ $(document).ready(function() {
         "responsive": true,
         "order": [[0, 'desc']],
         "columnDefs": [
-            { "orderable": false, "targets": [1, 7] } // Disable sorting on Admin and Actions columns
+            { "orderable": false, "targets": [1, 7] }
         ]
+    });
+    
+    // Profile picture preview for add modal
+    $('#add_profile_picture').change(function() {
+        const file = this.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                $('#addProfilePreview').attr('src', e.target.result);
+                $('#addProfilePreviewContainer').removeClass('d-none');
+                $('#addProfileInitialsContainer').addClass('d-none');
+            }
+            reader.readAsDataURL(file);
+            
+            // Update file input label
+            $(this).next('.custom-file-label').html(file.name);
+        }
+    });
+    
+    // Profile picture preview for edit modal
+    $('#edit_profile_picture').change(function() {
+        const file = this.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                $('#editProfilePreview').attr('src', e.target.result);
+                $('#editProfilePreviewContainer').removeClass('d-none');
+                $('#editProfileInitialsContainer').addClass('d-none');
+            }
+            reader.readAsDataURL(file);
+            
+            // Update file input label
+            $(this).next('.custom-file-label').html(file.name);
+            
+            // Uncheck remove picture checkbox
+            $('#remove_profile_picture').prop('checked', false);
+        }
+    });
+    
+    // Handle remove profile picture checkbox
+    $('#remove_profile_picture').change(function() {
+        if ($(this).is(':checked')) {
+            // Clear file input
+            $('#edit_profile_picture').val('');
+            $('#edit_profile_picture').next('.custom-file-label').html('Choose new file');
+            
+            // Show initials instead of image
+            const initials = $('#edit_full_name').val().split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2);
+            $('#editProfileInitialsContainer .profile-initials-lg').text(initials);
+            $('#editProfilePreviewContainer').addClass('d-none');
+            $('#editProfileInitialsContainer').removeClass('d-none');
+        }
     });
     
     // Load available sections for datalist
@@ -760,7 +914,6 @@ $(document).ready(function() {
                 submitBtn.html(originalText).prop('disabled', false);
                 
                 if (response.success) {
-                    // Show success notification with SweetAlert
                     Swal.fire({
                         icon: 'success',
                         title: 'Section Assigned!',
@@ -780,18 +933,10 @@ $(document).ready(function() {
                         timer: 4000
                     });
                     
-                    // Clear the form
                     $('#course_section').val('');
-                    
-                    // Refresh the sections list
                     loadAdminSections(userId);
-                    
-                    // Reload the page after 2 seconds
-                    setTimeout(() => {
-                        location.reload();
-                    }, 2000);
+                    setTimeout(() => location.reload(), 2000);
                 } else {
-                    // Show error notification
                     Swal.fire({
                         icon: 'error',
                         title: 'Error!',
@@ -809,7 +954,6 @@ $(document).ready(function() {
             error: function(xhr, status, error) {
                 submitBtn.html(originalText).prop('disabled', false);
                 
-                // Show detailed error notification
                 Swal.fire({
                     icon: 'error',
                     title: 'Request Failed!',
@@ -937,11 +1081,11 @@ $(document).ready(function() {
         const originalText = submitBtn.html();
         submitBtn.html('<i class="fas fa-spinner fa-spin mr-2"></i>Creating...').prop('disabled', true);
         
-        const formData = $(this).serialize();
+        const formData = new FormData(this);
         
         // Validate passwords match
-        const password = $('#password').val();
-        const confirmPassword = $('#confirm_password').val();
+        const password = $('#add_password').val();
+        const confirmPassword = $('#add_confirm_password').val();
         
         if (password !== confirmPassword) {
             Swal.fire('Error', 'Passwords do not match!', 'error');
@@ -959,6 +1103,8 @@ $(document).ready(function() {
             url: 'endpoint/add-admin.php',
             method: 'POST',
             data: formData,
+            processData: false,
+            contentType: false,
             dataType: 'json',
             success: function(response) {
                 submitBtn.html(originalText).prop('disabled', false);
@@ -967,14 +1113,18 @@ $(document).ready(function() {
                     Swal.fire('Success', response.message, 'success');
                     $('#addAdminModal').modal('hide');
                     $('#addAdminForm')[0].reset();
+                    $('#addProfilePreviewContainer').addClass('d-none');
+                    $('#addProfileInitialsContainer').removeClass('d-none');
+                    $('.custom-file-label').html('Choose file');
                     setTimeout(() => location.reload(), 1500);
                 } else {
                     Swal.fire('Error', response.message, 'error');
                 }
             },
-            error: function() {
+            error: function(xhr, status, error) {
                 submitBtn.html(originalText).prop('disabled', false);
                 Swal.fire('Error', 'Failed to create admin. Please try again.', 'error');
+                console.error('Add admin error:', error);
             }
         });
     });
@@ -986,6 +1136,7 @@ $(document).ready(function() {
         const username = $(this).data('username');
         const email = $(this).data('email');
         const role = $(this).data('role');
+        const profilePic = $(this).data('profile');
         
         $('#edit_user_id').val(userId);
         $('#edit_full_name').val(userName);
@@ -997,8 +1148,37 @@ $(document).ready(function() {
         $('#edit_password').val('');
         $('#edit_confirm_password').val('');
         
+        // Clear file input
+        $('#edit_profile_picture').val('');
+        $('#edit_profile_picture').next('.custom-file-label').html('Choose new file');
+        $('#remove_profile_picture').prop('checked', false);
+        
+        // Handle profile picture display
+        if (profilePic && profilePic.length > 0) {
+            // Check if file exists by trying to load it
+            const img = new Image();
+            img.onload = function() {
+                $('#editProfilePreview').attr('src', profilePic + '?v=' + new Date().getTime());
+                $('#editProfilePreviewContainer').removeClass('d-none');
+                $('#editProfileInitialsContainer').addClass('d-none');
+            };
+            img.onerror = function() {
+                showInitialsInEdit(userName);
+            };
+            img.src = profilePic + '?v=' + new Date().getTime();
+        } else {
+            showInitialsInEdit(userName);
+        }
+        
         $('#editAdminModal').modal('show');
     });
+    
+    function showInitialsInEdit(fullName) {
+        const initials = fullName.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2);
+        $('#editProfileInitialsContainer .profile-initials-lg').text(initials);
+        $('#editProfilePreviewContainer').addClass('d-none');
+        $('#editProfileInitialsContainer').removeClass('d-none');
+    }
     
     // Handle edit form submission
     $('#editAdminForm').on('submit', function(e) {
@@ -1008,7 +1188,7 @@ $(document).ready(function() {
         const originalText = submitBtn.html();
         submitBtn.html('<i class="fas fa-spinner fa-spin mr-2"></i>Updating...').prop('disabled', true);
         
-        const formData = $(this).serialize();
+        const formData = new FormData(this);
         
         // Validate passwords if provided
         const password = $('#edit_password').val();
@@ -1032,6 +1212,8 @@ $(document).ready(function() {
             url: 'endpoint/edit-admin.php',
             method: 'POST',
             data: formData,
+            processData: false,
+            contentType: false,
             dataType: 'json',
             success: function(response) {
                 submitBtn.html(originalText).prop('disabled', false);
@@ -1045,9 +1227,10 @@ $(document).ready(function() {
                     Swal.fire('Error', response.message, 'error');
                 }
             },
-            error: function() {
+            error: function(xhr, status, error) {
                 submitBtn.html(originalText).prop('disabled', false);
                 Swal.fire('Error', 'Failed to update admin. Please try again.', 'error');
+                console.error('Edit admin error:', error);
             }
         });
     });
@@ -1210,6 +1393,34 @@ $(document).ready(function() {
                 });
             }
         });
+    });
+    
+    // Generate initials from full name in add modal
+    $('#add_full_name').on('keyup', function() {
+        const fullName = $(this).val();
+        if (fullName) {
+            const nameParts = fullName.split(' ');
+            let initials = nameParts[0].charAt(0).toUpperCase();
+            if (nameParts.length > 1) {
+                initials += nameParts[1].charAt(0).toUpperCase();
+            }
+            $('#addProfileInitialsContainer .profile-initials-lg').text(initials);
+        } else {
+            $('#addProfileInitialsContainer .profile-initials-lg').text('AD');
+        }
+    });
+    
+    // Generate initials from full name in edit modal
+    $('#edit_full_name').on('keyup', function() {
+        const fullName = $(this).val();
+        if (fullName && $('#editProfileInitialsContainer').is(':visible')) {
+            const nameParts = fullName.split(' ');
+            let initials = nameParts[0].charAt(0).toUpperCase();
+            if (nameParts.length > 1) {
+                initials += nameParts[1].charAt(0).toUpperCase();
+            }
+            $('#editProfileInitialsContainer .profile-initials-lg').text(initials);
+        }
     });
 });
 </script>

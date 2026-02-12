@@ -1,4 +1,9 @@
 <?php
+// Start session if not already started
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
 // Determine current page for active link highlighting
 $currentPage = basename($_SERVER['PHP_SELF']);
 ?>
@@ -18,22 +23,31 @@ $currentPage = basename($_SERVER['PHP_SELF']);
         <!-- Sidebar user panel (optional) -->
         <div class="user-panel mt-3 pb-3 mb-3 d-flex">
             <div class="image">
-                <div class="img-circle elevation-2" style="width: 40px; height: 40px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); display: flex; align-items: center; justify-content: center;">
-                    <?php 
-                    $initials = '';
-                    if (isset($_SESSION['full_name'])) {
-                        $nameParts = explode(' ', $_SESSION['full_name']);
-                        $initials = strtoupper(substr($nameParts[0], 0, 1));
-                        if (isset($nameParts[1])) {
-                            $initials .= strtoupper(substr($nameParts[1], 0, 1));
+                <?php 
+                // Check if user has profile picture
+                if (isset($_SESSION['profile_picture']) && !empty($_SESSION['profile_picture']) && file_exists($_SESSION['profile_picture'])): ?>
+                    <img src="<?php echo htmlspecialchars($_SESSION['profile_picture']); ?>?v=<?php echo time(); ?>" 
+                         class="img-circle elevation-2" 
+                         alt="User Image"
+                         style="width: 40px; height: 40px; object-fit: cover; border-radius: 50%; border: 2px solid #fff;">
+                <?php else: ?>
+                    <div class="img-circle elevation-2" style="width: 40px; height: 40px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; border-radius: 50%; border: 2px solid #fff;">
+                        <?php 
+                        $initials = '';
+                        if (isset($_SESSION['full_name'])) {
+                            $nameParts = explode(' ', $_SESSION['full_name']);
+                            $initials = strtoupper(substr($nameParts[0], 0, 1));
+                            if (isset($nameParts[1])) {
+                                $initials .= strtoupper(substr($nameParts[1], 0, 1));
+                            }
                         }
-                    }
-                    echo $initials;
-                    ?>
-                </div>
+                        echo $initials;
+                        ?>
+                    </div>
+                <?php endif; ?>
             </div>
             <div class="info">
-                <a href="#" class="d-block">
+                <a href="profile.php" class="d-block">
                     <?php echo htmlspecialchars($_SESSION['full_name'] ?? 'Administrator'); ?>
                     <?php if (isset($_SESSION['role'])): ?>
                         <small class="text-muted d-block">
@@ -56,6 +70,9 @@ $currentPage = basename($_SERVER['PHP_SELF']);
                     </a>
                 </li>
 
+                <!-- My Profile -->
+               
+
                 <!-- Attendance Scanner -->
                 <li class="nav-item">
                     <a href="attendance.php" class="nav-link <?= ($currentPage == 'attendance.php') ? 'active' : '' ?>">
@@ -71,9 +88,6 @@ $currentPage = basename($_SERVER['PHP_SELF']);
                         <p>Student Management</p>
                     </a>
                 </li>
-
-                <!-- Attendance Records -->
-            
 
                 <!-- Archive Manager -->
                 <li class="nav-item">
@@ -93,20 +107,15 @@ $currentPage = basename($_SERVER['PHP_SELF']);
                 </li>
                 <?php endif; ?>
 
-                <!-- Settings -->
-                
-
                 <!-- Divider -->
                 <li class="nav-header">SYSTEM</li>
 
-                <!-- Help & Support -->
-                <li class="nav-item">
-                    <a href="help.php" class="nav-link <?= ($currentPage == 'help.php') ? 'active' : '' ?>">
-                        <i class="nav-icon fas fa-question-circle"></i>
-                        <p>Help & Support</p>
+ <li class="nav-item">
+                    <a href="profile.php" class="nav-link <?= ($currentPage == 'profile.php') ? 'active' : '' ?>">
+                        <i class="nav-icon fas fa-user-circle"></i>
+                        <p>My Profile</p>
                     </a>
                 </li>
-
                 <!-- Logout -->
                 <li class="nav-item">
                     <a href="./endpoint/logout.php" class="nav-link text-danger">
@@ -184,4 +193,4 @@ $currentPage = basename($_SERVER['PHP_SELF']);
             }
         });
     });
-</script>
+</script>   

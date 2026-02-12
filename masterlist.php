@@ -33,14 +33,43 @@ if (!$assignedSection) {
 
 // Prepare query based on role
 if ($user_role === 'super_admin') {
-    // Super admin sees all students with admin info
-    $stmt = $conn->prepare("
+    // Get all admins with their student counts
+    $admins_stmt = $conn->prepare("
+        SELECT 
+            u.user_id,
+            u.full_name,
+            u.username,
+            COUNT(s.tbl_student_id) as student_count
+        FROM tbl_users u
+        LEFT JOIN tbl_student s ON u.user_id = s.created_by
+        WHERE u.role = 'admin'
+        GROUP BY u.user_id, u.full_name, u.username
+        ORDER BY u.full_name ASC
+    ");
+    $admins_stmt->execute();
+    $admins = $admins_stmt->fetchAll();
+    
+    // Get students without admin (system added)
+    $system_stmt = $conn->prepare("
+        SELECT s.*, NULL as admin_name, NULL as admin_username 
+        FROM tbl_student s 
+        WHERE s.created_by IS NULL 
+        ORDER BY s.tbl_student_id DESC
+    ");
+    $system_stmt->execute();
+    $system_students = $system_stmt->fetchAll();
+    
+    // Also get current user's students separately if they're super admin (they can also add students)
+    $my_stmt = $conn->prepare("
         SELECT s.*, u.full_name as admin_name, u.username as admin_username 
         FROM tbl_student s 
         LEFT JOIN tbl_users u ON s.created_by = u.user_id 
+        WHERE s.created_by = ?
         ORDER BY s.tbl_student_id DESC
     ");
-    $stmt->execute();
+    $my_stmt->execute([$user_id]);
+    $my_students = $my_stmt->fetchAll();
+    
 } else {
     // Regular admin only sees their own students
     $stmt = $conn->prepare("
@@ -50,9 +79,8 @@ if ($user_role === 'super_admin') {
         ORDER BY s.tbl_student_id DESC
     ");
     $stmt->execute([$user_id]);
+    $result = $stmt->fetchAll();
 }
-
-$result = $stmt->fetchAll();
 
 // Get total counts for stats
 if ($user_role === 'super_admin') {
@@ -60,14 +88,18 @@ if ($user_role === 'super_admin') {
     $total_stmt->execute();
     $total_students = $total_stmt->fetchColumn();
     
-    $my_students_stmt = $conn->prepare("SELECT COUNT(*) FROM tbl_student WHERE created_by = ?");
-    $my_students_stmt->execute([$user_id]);
-    $my_students = $my_students_stmt->fetchColumn();
+    $my_students_count = $conn->prepare("SELECT COUNT(*) FROM tbl_student WHERE created_by = ?");
+    $my_students_count->execute([$user_id]);
+    $my_students_count = $my_students_count->fetchColumn();
+    
+    $total_admins_stmt = $conn->prepare("SELECT COUNT(*) FROM tbl_users WHERE role = 'admin'");
+    $total_admins_stmt->execute();
+    $total_admins = $total_admins_stmt->fetchColumn();
 } else {
     $total_stmt = $conn->prepare("SELECT COUNT(*) FROM tbl_student WHERE created_by = ?");
     $total_stmt->execute([$user_id]);
     $total_students = $total_stmt->fetchColumn();
-    $my_students = $total_students;
+    $my_students_count = $total_students;
 }
 ?>
 
@@ -134,6 +166,186 @@ if ($user_role === 'super_admin') {
             left: 15px;
             top: 50%;
             transform: translateY(-50%);
+        }
+        
+        /* Admin Folder Styles */
+        .admin-folder {
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            overflow: hidden;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            transition: all 0.3s ease;
+        }
+        
+        .admin-folder:hover {
+            box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+        }
+        
+        .admin-folder-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px 20px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            transition: all 0.3s ease;
+        }
+        
+        .admin-folder-header.collapsed {
+            background: linear-gradient(135deg, #6c757d 0%, #495057 100%);
+        }
+        
+        .admin-folder-header:hover {
+            opacity: 0.95;
+        }
+        
+        .admin-folder-header i {
+            margin-right: 10px;
+        }
+        
+        .folder-icon {
+            font-size: 1.2rem;
+            margin-right: 15px;
+            color: #ffd700;
+        }
+        
+        .admin-info {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+        
+        .admin-name {
+            font-weight: bold;
+            font-size: 1.1rem;
+        }
+        
+        .admin-username {
+            font-size: 0.9rem;
+            opacity: 0.9;
+            background: rgba(255,255,255,0.2);
+            padding: 3px 10px;
+            border-radius: 20px;
+        }
+        
+        .admin-stats {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        .stat-badge {
+            background: rgba(255,255,255,0.2);
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        .stat-badge i {
+            font-size: 0.9rem;
+        }
+        
+        .expand-collapse-icon {
+            font-size: 1.2rem;
+            transition: transform 0.3s ease;
+        }
+        
+        .admin-folder-body {
+            background: white;
+            transition: all 0.3s ease;
+        }
+        
+        .admin-folder-body.collapsed {
+            display: none;
+        }
+        
+        .folder-table {
+            margin: 0;
+        }
+        
+        .folder-table thead {
+            background: #f8f9fa;
+        }
+        
+        .folder-table thead th {
+            border-top: none;
+            font-weight: 600;
+            color: #495057;
+            font-size: 0.9rem;
+        }
+        
+        .empty-folder {
+            padding: 40px;
+            text-align: center;
+            color: #6c757d;
+        }
+        
+        .empty-folder i {
+            font-size: 3rem;
+            margin-bottom: 15px;
+            opacity: 0.3;
+        }
+        
+        .my-folder .admin-folder-header {
+            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+        }
+        
+        .system-folder .admin-folder-header {
+            background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+        }
+        
+        .search-box {
+            margin-bottom: 20px;
+        }
+        
+        .search-box input {
+            border-radius: 20px;
+            padding: 10px 20px;
+            border: 2px solid #e9ecef;
+            transition: all 0.3s ease;
+        }
+        
+        .search-box input:focus {
+            border-color: #667eea;
+            box-shadow: none;
+        }
+        
+        .admin-filter {
+            margin-bottom: 20px;
+        }
+        
+        .admin-filter .btn {
+            border-radius: 20px;
+            margin-right: 5px;
+            margin-bottom: 5px;
+        }
+        
+        .admin-filter .btn.active {
+            background: #667eea;
+            color: white;
+            border-color: #667eea;
+        }
+        
+        @media (max-width: 768px) {
+            .admin-folder-header {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            
+            .admin-info {
+                margin-bottom: 10px;
+            }
+            
+            .admin-stats {
+                width: 100%;
+                justify-content: flex-start;
+            }
         }
     </style>
 </head>
@@ -204,7 +416,7 @@ if ($user_role === 'super_admin') {
                     <div class="col-lg-3 col-6">
                         <div class="small-box bg-success">
                             <div class="inner">
-                                <h3><?php echo $my_students; ?></h3>
+                                <h3><?php echo $my_students_count; ?></h3>
                                 <p>Students I Added</p>
                             </div>
                             <div class="icon">
@@ -216,13 +428,8 @@ if ($user_role === 'super_admin') {
                     <div class="col-lg-3 col-6">
                         <div class="small-box bg-warning">
                             <div class="inner">
-                                <?php
-                                $other_stmt = $conn->prepare("SELECT COUNT(DISTINCT created_by) FROM tbl_student WHERE created_by IS NOT NULL");
-                                $other_stmt->execute();
-                                $other_admins = $other_stmt->fetchColumn();
-                                ?>
-                                <h3><?php echo $other_admins; ?></h3>
-                                <p>Other Admins</p>
+                                <h3><?php echo $total_admins; ?></h3>
+                                <p>Active Admins</p>
                             </div>
                             <div class="icon">
                                 <i class="fas fa-user-shield"></i>
@@ -296,53 +503,69 @@ if ($user_role === 'super_admin') {
                     </div>
                 </div>
 
-                <!-- Student Table -->
-                <div class="card">
-                    <div class="card-header">
-                        <h3 class="card-title">List of Students</h3>
-                        <?php if ($user_role === 'super_admin'): ?>
-                        <div class="card-tools">
-                            <span class="badge badge-info">Viewing: All Students</span>
+                <!-- Super Admin Folder View -->
+                <?php if ($user_role === 'super_admin'): ?>
+                
+                <!-- Search and Filter Controls -->
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="search-box">
+                            <input type="text" id="searchStudent" class="form-control" placeholder="🔍 Search students across all folders...">
                         </div>
-                        <?php else: ?>
-                        <div class="card-tools">
-                            <span class="badge badge-primary">Viewing: My Students Only</span>
-                            <?php if ($assignedSection): ?>
-                            <span class="badge badge-success ml-2">Section: <?php echo htmlspecialchars($assignedSection); ?></span>
-                            <?php endif; ?>
-                        </div>
-                        <?php endif; ?>
                     </div>
-                    <div class="card-body p-0">
-                        <div class="table-responsive student-table">
-                            <table class="table table-hover" id="studentTable">
+                    <div class="col-md-6">
+                        <div class="admin-filter text-right">
+                            <button class="btn btn-outline-secondary btn-sm" data-filter="all">All Folders</button>
+                            <button class="btn btn-outline-secondary btn-sm" data-filter="expanded">Expand All</button>
+                            <button class="btn btn-outline-secondary btn-sm active" data-filter="collapsed">Collapse All</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- My Students Folder (Current Super Admin) -->
+                <?php if (!empty($my_students)): ?>
+                <div class="admin-folder my-folder" data-admin-id="<?php echo $user_id; ?>" data-admin-name="<?php echo htmlspecialchars($user_name); ?>">
+                    <div class="admin-folder-header collapsed">
+                        <div class="admin-info">
+                            <i class="fas fa-folder folder-icon"></i>
+                            <span class="admin-name">
+                                <i class="fas fa-star mr-1" style="color: #ffd700;"></i>
+                                My Added Students
+                            </span>
+                            <span class="admin-username">
+                                <i class="fas fa-user mr-1"></i>
+                                <?php echo htmlspecialchars($user_name); ?> (You)
+                            </span>
+                        </div>
+                        <div class="admin-stats">
+                            <span class="stat-badge">
+                                <i class="fas fa-users"></i>
+                                <?php echo count($my_students); ?> students
+                            </span>
+                            <i class="fas fa-chevron-circle-right expand-collapse-icon"></i>
+                        </div>
+                    </div>
+                    <div class="admin-folder-body" style="display: none;">
+                        <div class="table-responsive">
+                            <table class="table table-hover folder-table">
                                 <thead>
                                     <tr>
                                         <th>#</th>
                                         <th>Name</th>
                                         <th>Course & Section</th>
                                         <th>QR Code</th>
-                                        <?php if ($user_role === 'super_admin'): ?>
-                                        <th>Added By</th>
-                                        <?php endif; ?>
                                         <th>Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    <?php foreach ($result as $row): ?>
+                                    <?php foreach ($my_students as $row): ?>
                                         <?php
                                         $studentID = $row["tbl_student_id"];
                                         $studentName = $row["student_name"];
                                         $studentCourse = $row["course_section"];
                                         $qrCode = $row["generated_code"];
-                                        $createdBy = $row["created_by"] ?? null;
-                                        $adminName = $row["admin_name"] ?? null;
-                                        $adminUsername = $row["admin_username"] ?? null;
-                                        
-                                        // Check if current user can edit/delete this student
-                                        $canModify = ($user_role === 'super_admin') || ($createdBy == $user_id);
                                         ?>
-                                        <tr>
+                                        <tr class="student-row" data-student-name="<?php echo strtolower(htmlspecialchars($studentName)); ?>" data-student-course="<?php echo strtolower(htmlspecialchars($studentCourse)); ?>">
                                             <td><?= $studentID ?></td>
                                             <td><?= htmlspecialchars($studentName) ?></td>
                                             <td><?= htmlspecialchars($studentCourse) ?></td>
@@ -351,33 +574,14 @@ if ($user_role === 'super_admin') {
                                                     <i class="fas fa-qrcode"></i> View QR
                                                 </button>
                                             </td>
-                                            <?php if ($user_role === 'super_admin'): ?>
-                                            <td>
-                                                <?php if ($adminName): ?>
-                                                <span class="badge badge-secondary" data-toggle="tooltip" title="Username: <?= htmlspecialchars($adminUsername) ?>">
-                                                    <?= htmlspecialchars($adminName) ?>
-                                                </span>
-                                                <?php elseif ($createdBy): ?>
-                                                <span class="badge badge-light">Admin ID: <?= $createdBy ?></span>
-                                                <?php else: ?>
-                                                <span class="badge badge-dark">System</span>
-                                                <?php endif; ?>
-                                            </td>
-                                            <?php endif; ?>
                                             <td>
                                                 <div class="action-buttons">
-                                                    <?php if ($canModify): ?>
                                                     <button class="btn btn-warning btn-sm" onclick="updateStudent(<?= $studentID ?>)">
                                                         <i class="fas fa-edit"></i> Edit
                                                     </button>
                                                     <button class="btn btn-danger btn-sm" onclick="deleteStudent(<?= $studentID ?>)">
                                                         <i class="fas fa-trash"></i> Delete
                                                     </button>
-                                                    <?php else: ?>
-                                                    <span class="text-muted permission-badge" data-toggle="tooltip" title="You can only modify students you added">
-                                                        <i class="fas fa-lock"></i> No Permission
-                                                    </span>
-                                                    <?php endif; ?>
                                                 </div>
                                             </td>
                                         </tr>
@@ -388,9 +592,7 @@ if ($user_role === 'super_admin') {
                                                 <div class="modal-content">
                                                     <div class="modal-header">
                                                         <h5 class="modal-title"><?= $studentName ?>'s QR Code</h5>
-                                                        <?php if ($user_role === 'super_admin' && $adminName): ?>
-                                                        <small class="text-muted ml-2">(Added by: <?= htmlspecialchars($adminName) ?>)</small>
-                                                        <?php endif; ?>
+                                                        <small class="text-muted ml-2">(Added by: You)</small>
                                                         <button type="button" class="close" data-dismiss="modal">
                                                             <span>&times;</span>
                                                         </button>
@@ -413,6 +615,310 @@ if ($user_role === 'super_admin') {
                         </div>
                     </div>
                 </div>
+                <?php endif; ?>
+
+                <!-- Other Admins Folders -->
+                <?php foreach ($admins as $admin): 
+                    // Skip if no students and current user
+                    if ($admin['user_id'] == $user_id) continue;
+                    
+                    // Get students for this admin
+                    $admin_students_stmt = $conn->prepare("
+                        SELECT s.*, u.full_name as admin_name, u.username as admin_username 
+                        FROM tbl_student s 
+                        LEFT JOIN tbl_users u ON s.created_by = u.user_id 
+                        WHERE s.created_by = ?
+                        ORDER BY s.tbl_student_id DESC
+                    ");
+                    $admin_students_stmt->execute([$admin['user_id']]);
+                    $admin_students = $admin_students_stmt->fetchAll();
+                    
+                    if (empty($admin_students) && $admin['student_count'] == 0) continue;
+                ?>
+                <div class="admin-folder" data-admin-id="<?php echo $admin['user_id']; ?>" data-admin-name="<?php echo htmlspecialchars($admin['full_name']); ?>">
+                    <div class="admin-folder-header collapsed">
+                        <div class="admin-info">
+                            <i class="fas fa-folder folder-icon"></i>
+                            <span class="admin-name">
+                                <i class="fas fa-user-shield mr-1"></i>
+                                <?php echo htmlspecialchars($admin['full_name']); ?>
+                            </span>
+                            <span class="admin-username">
+                                <i class="fas fa-at mr-1"></i>
+                                <?php echo htmlspecialchars($admin['username']); ?>
+                            </span>
+                        </div>
+                        <div class="admin-stats">
+                            <span class="stat-badge">
+                                <i class="fas fa-users"></i>
+                                <?php echo count($admin_students); ?> students
+                            </span>
+                            <i class="fas fa-chevron-circle-right expand-collapse-icon"></i>
+                        </div>
+                    </div>
+                    <div class="admin-folder-body" style="display: none;">
+                        <?php if (!empty($admin_students)): ?>
+                        <div class="table-responsive">
+                            <table class="table table-hover folder-table">
+                                <thead>
+                                    <tr>
+                                        <th>#</th>
+                                        <th>Name</th>
+                                        <th>Course & Section</th>
+                                        <th>QR Code</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php foreach ($admin_students as $row): ?>
+                                        <?php
+                                        $studentID = $row["tbl_student_id"];
+                                        $studentName = $row["student_name"];
+                                        $studentCourse = $row["course_section"];
+                                        $qrCode = $row["generated_code"];
+                                        ?>
+                                        <tr class="student-row" data-student-name="<?php echo strtolower(htmlspecialchars($studentName)); ?>" data-student-course="<?php echo strtolower(htmlspecialchars($studentCourse)); ?>">
+                                            <td><?= $studentID ?></td>
+                                            <td><?= htmlspecialchars($studentName) ?></td>
+                                            <td><?= htmlspecialchars($studentCourse) ?></td>
+                                            <td>
+                                                <button class="btn btn-info btn-sm" data-toggle="modal" data-target="#qrCodeModal<?= $studentID ?>">
+                                                    <i class="fas fa-qrcode"></i> View QR
+                                                </button>
+                                            </td>
+                                            <td>
+                                                <div class="action-buttons">
+                                                    <?php if ($admin['user_id'] == $user_id): ?>
+                                                    <button class="btn btn-warning btn-sm" onclick="updateStudent(<?= $studentID ?>)">
+                                                        <i class="fas fa-edit"></i> Edit
+                                                    </button>
+                                                    <button class="btn btn-danger btn-sm" onclick="deleteStudent(<?= $studentID ?>)">
+                                                        <i class="fas fa-trash"></i> Delete
+                                                    </button>
+                                                    <?php else: ?>
+                                                    <span class="text-muted permission-badge" data-toggle="tooltip" title="You can only modify students you added">
+                                                        <i class="fas fa-lock"></i> Read Only
+                                                    </span>
+                                                    <?php endif; ?>
+                                                </div>
+                                            </td>
+                                        </tr>
+
+                                        <!-- QR Modal -->
+                                        <div class="modal fade" id="qrCodeModal<?= $studentID ?>" tabindex="-1">
+                                            <div class="modal-dialog">
+                                                <div class="modal-content">
+                                                    <div class="modal-header">
+                                                        <h5 class="modal-title"><?= $studentName ?>'s QR Code</h5>
+                                                        <small class="text-muted ml-2">(Added by: <?php echo htmlspecialchars($admin['full_name']); ?>)</small>
+                                                        <button type="button" class="close" data-dismiss="modal">
+                                                            <span>&times;</span>
+                                                        </button>
+                                                    </div>
+                                                    <div class="modal-body text-center">
+                                                        <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=<?= $qrCode ?>" 
+                                                             alt="QR Code" class="qr-modal-img">
+                                                        <p class="mt-3 text-muted">Scan this QR code for attendance</p>
+                                                        <p><small>Code: <code><?= $qrCode ?></code></small></p>
+                                                    </div>
+                                                    <div class="modal-footer">
+                                                        <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                        <?php else: ?>
+                        <div class="empty-folder">
+                            <i class="fas fa-folder-open"></i>
+                            <h5>No Students Found</h5>
+                            <p class="text-muted">This admin hasn't added any students yet.</p>
+                        </div>
+                        <?php endif; ?>
+                    </div>
+                </div>
+                <?php endforeach; ?>
+
+                <!-- System Added Students Folder (No Creator) -->
+                <?php if (!empty($system_students)): ?>
+                <div class="admin-folder system-folder">
+                    <div class="admin-folder-header collapsed">
+                        <div class="admin-info">
+                            <i class="fas fa-folder folder-icon"></i>
+                            <span class="admin-name">
+                                <i class="fas fa-cog mr-1"></i>
+                                System Added Students
+                            </span>
+                            <span class="admin-username">
+                                <i class="fas fa-robot mr-1"></i>
+                                No assigned admin
+                            </span>
+                        </div>
+                        <div class="admin-stats">
+                            <span class="stat-badge">
+                                <i class="fas fa-users"></i>
+                                <?php echo count($system_students); ?> students
+                            </span>
+                            <i class="fas fa-chevron-circle-right expand-collapse-icon"></i>
+                        </div>
+                    </div>
+                    <div class="admin-folder-body" style="display: none;">
+                        <div class="table-responsive">
+                            <table class="table table-hover folder-table">
+                                <thead>
+                                    <tr>
+                                        <th>#</th>
+                                        <th>Name</th>
+                                        <th>Course & Section</th>
+                                        <th>QR Code</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php foreach ($system_students as $row): ?>
+                                        <?php
+                                        $studentID = $row["tbl_student_id"];
+                                        $studentName = $row["student_name"];
+                                        $studentCourse = $row["course_section"];
+                                        $qrCode = $row["generated_code"];
+                                        ?>
+                                        <tr class="student-row" data-student-name="<?php echo strtolower(htmlspecialchars($studentName)); ?>" data-student-course="<?php echo strtolower(htmlspecialchars($studentCourse)); ?>">
+                                            <td><?= $studentID ?></td>
+                                            <td><?= htmlspecialchars($studentName) ?></td>
+                                            <td><?= htmlspecialchars($studentCourse) ?></td>
+                                            <td>
+                                                <button class="btn btn-info btn-sm" data-toggle="modal" data-target="#qrCodeModal<?= $studentID ?>">
+                                                    <i class="fas fa-qrcode"></i> View QR
+                                                </button>
+                                            </td>
+                                            <td>
+                                                <div class="action-buttons">
+                                                    <button class="btn btn-warning btn-sm" onclick="updateStudent(<?= $studentID ?>)">
+                                                        <i class="fas fa-edit"></i> Edit
+                                                    </button>
+                                                    <button class="btn btn-danger btn-sm" onclick="deleteStudent(<?= $studentID ?>)">
+                                                        <i class="fas fa-trash"></i> Delete
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+
+                                        <!-- QR Modal -->
+                                        <div class="modal fade" id="qrCodeModal<?= $studentID ?>" tabindex="-1">
+                                            <div class="modal-dialog">
+                                                <div class="modal-content">
+                                                    <div class="modal-header">
+                                                        <h5 class="modal-title"><?= $studentName ?>'s QR Code</h5>
+                                                        <small class="text-muted ml-2">(System Added)</small>
+                                                        <button type="button" class="close" data-dismiss="modal">
+                                                            <span>&times;</span>
+                                                        </button>
+                                                    </div>
+                                                    <div class="modal-body text-center">
+                                                        <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=<?= $qrCode ?>" 
+                                                             alt="QR Code" class="qr-modal-img">
+                                                        <p class="mt-3 text-muted">Scan this QR code for attendance</p>
+                                                        <p><small>Code: <code><?= $qrCode ?></code></small></p>
+                                                    </div>
+                                                    <div class="modal-footer">
+                                                        <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                <?php endif; ?>
+
+                <?php else: ?>
+                <!-- Regular Admin Table View -->
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">List of Students</h3>
+                        <div class="card-tools">
+                            <span class="badge badge-primary">Viewing: My Students Only</span>
+                            <?php if ($assignedSection): ?>
+                            <span class="badge badge-success ml-2">Section: <?php echo htmlspecialchars($assignedSection); ?></span>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive student-table">
+                            <table class="table table-hover" id="studentTable">
+                                <thead>
+                                    <tr>
+                                        <th>#</th>
+                                        <th>Name</th>
+                                        <th>Course & Section</th>
+                                        <th>QR Code</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php foreach ($result as $row): ?>
+                                        <?php
+                                        $studentID = $row["tbl_student_id"];
+                                        $studentName = $row["student_name"];
+                                        $studentCourse = $row["course_section"];
+                                        $qrCode = $row["generated_code"];
+                                        ?>
+                                        <tr>
+                                            <td><?= $studentID ?></td>
+                                            <td><?= htmlspecialchars($studentName) ?></td>
+                                            <td><?= htmlspecialchars($studentCourse) ?></td>
+                                            <td>
+                                                <button class="btn btn-info btn-sm" data-toggle="modal" data-target="#qrCodeModal<?= $studentID ?>">
+                                                    <i class="fas fa-qrcode"></i> View QR
+                                                </button>
+                                            </td>
+                                            <td>
+                                                <div class="action-buttons">
+                                                    <button class="btn btn-warning btn-sm" onclick="updateStudent(<?= $studentID ?>)">
+                                                        <i class="fas fa-edit"></i> Edit
+                                                    </button>
+                                                    <button class="btn btn-danger btn-sm" onclick="deleteStudent(<?= $studentID ?>)">
+                                                        <i class="fas fa-trash"></i> Delete
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+
+                                        <!-- QR Modal -->
+                                        <div class="modal fade" id="qrCodeModal<?= $studentID ?>" tabindex="-1">
+                                            <div class="modal-dialog">
+                                                <div class="modal-content">
+                                                    <div class="modal-header">
+                                                        <h5 class="modal-title"><?= $studentName ?>'s QR Code</h5>
+                                                        <button type="button" class="close" data-dismiss="modal">
+                                                            <span>&times;</span>
+                                                        </button>
+                                                    </div>
+                                                    <div class="modal-body text-center">
+                                                        <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=<?= $qrCode ?>" 
+                                                             alt="QR Code" class="qr-modal-img">
+                                                        <p class="mt-3 text-muted">Scan this QR code for attendance</p>
+                                                        <p><small>Code: <code><?= $qrCode ?></code></small></p>
+                                                    </div>
+                                                    <div class="modal-footer">
+                                                        <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                <?php endif; ?>
             </div>
         </section>
     </div>
@@ -598,23 +1104,132 @@ if ($user_role === 'super_admin') {
 
 <script>
 $(document).ready(function() {
+    // Initialize tooltips
+    $('[data-toggle="tooltip"]').tooltip();
+    
+    <?php if ($user_role === 'super_admin'): ?>
+    // All folders are collapsed by default - no need to initialize since HTML already has collapsed classes and display:none
+    
+    // Folder click handler
+    $('.admin-folder-header').on('click', function(e) {
+        // Don't toggle if clicking on buttons inside header
+        if ($(e.target).closest('button').length) return;
+        
+        const $header = $(this);
+        const $folder = $header.closest('.admin-folder');
+        const $body = $folder.find('.admin-folder-body');
+        const $icon = $header.find('.expand-collapse-icon');
+        
+        $body.slideToggle(300);
+        $icon.toggleClass('fa-chevron-circle-right fa-chevron-circle-down');
+        $header.toggleClass('collapsed');
+    });
+    
+    // Expand All button
+    $('[data-filter="expanded"]').on('click', function() {
+        $('.admin-folder-body').slideDown(300);
+        $('.admin-folder-header').removeClass('collapsed');
+        $('.expand-collapse-icon').removeClass('fa-chevron-circle-right').addClass('fa-chevron-circle-down');
+        $(this).addClass('active').siblings().removeClass('active');
+    });
+    
+    // Collapse All button
+    $('[data-filter="collapsed"]').on('click', function() {
+        $('.admin-folder-body').slideUp(300);
+        $('.admin-folder-header').addClass('collapsed');
+        $('.expand-collapse-icon').removeClass('fa-chevron-circle-down').addClass('fa-chevron-circle-right');
+        $(this).addClass('active').siblings().removeClass('active');
+    });
+    
+    // All Folders button (resets to default - collapsed)
+    $('[data-filter="all"]').on('click', function() {
+        $('.admin-folder-body').slideUp(300);
+        $('.admin-folder-header').addClass('collapsed');
+        $('.expand-collapse-icon').removeClass('fa-chevron-circle-down').addClass('fa-chevron-circle-right');
+        $(this).addClass('active').siblings().removeClass('active');
+    });
+    
+    // Search functionality
+    $('#searchStudent').on('keyup', function() {
+        const searchTerm = $(this).val().toLowerCase().trim();
+        
+        if (searchTerm === '') {
+            // Show all rows
+            $('.student-row').show();
+            // Show all folders but keep them collapsed
+            $('.admin-folder').show();
+            // Reset to collapsed state
+            $('.admin-folder-body').hide();
+            $('.admin-folder-header').addClass('collapsed');
+            $('.expand-collapse-icon').removeClass('fa-chevron-circle-down').addClass('fa-chevron-circle-right');
+            // Update student counts back to original
+            $('.admin-folder').each(function() {
+                const $folder = $(this);
+                const totalCount = $folder.find('.student-row').length;
+                $folder.find('.stat-badge:first').html(`<i class="fas fa-users"></i> ${totalCount} students`);
+            });
+        } else {
+            // Hide all rows first
+            $('.student-row').hide();
+            
+            // Show matching rows
+            $(`.student-row[data-student-name*="${searchTerm}"], 
+               .student-row[data-student-course*="${searchTerm}"]`).show();
+            
+            // Show folders that have visible students and expand them
+            $('.admin-folder').each(function() {
+                const $folder = $(this);
+                const $visibleRows = $folder.find('.student-row:visible');
+                const totalCount = $folder.find('.student-row').length;
+                
+                if ($visibleRows.length > 0) {
+                    $folder.show();
+                    $folder.find('.admin-folder-body').slideDown(300);
+                    $folder.find('.admin-folder-header').removeClass('collapsed');
+                    $folder.find('.expand-collapse-icon').removeClass('fa-chevron-circle-right').addClass('fa-chevron-circle-down');
+                    $folder.find('.stat-badge:first').html(`<i class="fas fa-users"></i> ${$visibleRows.length}/${totalCount} students`);
+                } else {
+                    $folder.hide();
+                }
+            });
+        }
+    });
+    
+    // Save folder states in localStorage (optional - can be removed if not needed)
+    $('.admin-folder-header').on('click', function() {
+        const $folder = $(this).closest('.admin-folder');
+        const adminId = $folder.data('admin-id') || 'system';
+        const isExpanded = $folder.find('.admin-folder-body').is(':visible');
+        
+        let folderStates = localStorage.getItem('folderStates');
+        folderStates = folderStates ? JSON.parse(folderStates) : {};
+        folderStates[adminId] = isExpanded;
+        localStorage.setItem('folderStates', JSON.stringify(folderStates));
+    });
+    
+    <?php endif; ?>
+    
+    // Initialize DataTable for regular admin view
+    <?php if ($user_role !== 'super_admin'): ?>
     $('#studentTable').DataTable({
         "pageLength": 10,
         "responsive": true
     });
-    
-    // Enable tooltips
-    $('[data-toggle="tooltip"]').tooltip();
+    <?php endif; ?>
 });
 
 function updateStudent(id) {
     // Find the row with this student ID
-    const row = document.querySelector(`tr:has(button[onclick="updateStudent(${id})"])`);
+    const button = document.querySelector(`button[onclick="updateStudent(${id})"]`);
+    if (!button) return;
+    
+    const row = button.closest('tr');
     if (!row) return;
     
     // Get student data from the row
-    const studentName = row.cells[1].textContent;
-    const studentCourse = row.cells[2].textContent;
+    const cells = row.cells;
+    const studentName = cells[1].textContent;
+    const studentCourse = cells[2].textContent;
     
     // Set values in the modal
     $("#updateStudentId").val(id);
@@ -635,7 +1250,7 @@ function deleteStudent(id) {
         confirmButtonText: 'Yes, delete it!'
     }).then((result) => {
         if (result.isConfirmed) {
-            window.location = "./endpoint/delete-student.php?student=" + id;
+            window.location.href = "./endpoint/delete-student.php?student=" + id;
         }
     });
 }
@@ -782,17 +1397,6 @@ $('#addStudentForm').on('submit', function(e) {
     submitBtn.disabled = true;
     submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Adding...';
     submitBtn.classList.add('btn-spinner');
-    
-    // Get form data
-    const formData = new FormData();
-    formData.append('student_name', $('#studentName').val());
-    formData.append('generated_code', $('#generatedCode').val());
-    
-    <?php if ($user_role === 'super_admin'): ?>
-    formData.append('course_section', $('#studentCourse').val());
-    <?php else: ?>
-    formData.append('course_section', '<?php echo htmlspecialchars($assignedSection); ?>');
-    <?php endif; ?>
     
     // Simple validation
     if (!$('#generatedCode').val()) {
