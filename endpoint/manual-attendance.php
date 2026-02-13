@@ -24,12 +24,21 @@ if (empty($student_id)) {
 }
 
 try {
-    // Validate student exists
-    $stmt = $conn->prepare("SELECT COUNT(*) FROM tbl_student WHERE tbl_student_id = ?");
-    $stmt->execute([$student_id]);
+    // Validate student exists AND is created by this admin OR enrolled in admin's sections
+    $stmt = $conn->prepare("
+        SELECT COUNT(*) 
+        FROM tbl_student s
+        LEFT JOIN tbl_admin_sections ads ON s.course_section = ads.course_section
+        WHERE s.tbl_student_id = ? 
+        AND (
+            s.created_by = ? 
+            OR ads.user_id = ?
+        )
+    ");
+    $stmt->execute([$student_id, $_SESSION['user_id'], $_SESSION['user_id']]);
     
     if ($stmt->fetchColumn() == 0) {
-        echo json_encode(['success' => false, 'message' => 'Student not found']);
+        echo json_encode(['success' => false, 'message' => 'Student not found or not enrolled in your section']);
         exit();
     }
     
@@ -55,13 +64,12 @@ try {
     $cutoff_time = new DateTime(date('Y-m-d', strtotime($time_in)) . ' 08:00:00');
     $status = $attendance_time > $cutoff_time ? 'Late' : 'On Time';
     
-    // Insert record - check if notes column exists
+    // Insert record
     $columns = "tbl_student_id, time_in, status";
     $placeholders = "?, ?, ?";
     $params = [$student_id, $time_in, $status];
     
-    // Add notes if the column exists (you'll add it with the ALTER TABLE above)
-    // For now, check if notes is not empty
+    // Add notes if provided
     if (!empty($notes)) {
         $columns .= ", notes";
         $placeholders .= ", ?";

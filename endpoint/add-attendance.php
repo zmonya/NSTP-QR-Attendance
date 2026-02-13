@@ -2,88 +2,137 @@
 session_start();
 include("../conn/conn.php");
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    if (isset($_POST['qr_code']) && !empty(trim($_POST['qr_code']))) {
-        $qrCode = trim($_POST['qr_code']);
-        $studentID = null;
-        $timeIn = date("Y-m-d H:i:s");
-        
-        // Validate QR code format (adjust regex as needed)
-        if (!preg_match('/^[A-Za-z0-9\-_]+$/', $qrCode)) {
-            $_SESSION['error'] = "Invalid QR Code format";
-            header("Location: http://localhost/qr-code-attendance-system/index.php");
-            exit();
-        }
+// Set timezone
+date_default_timezone_set('Asia/Manila');
 
+// Return JSON response for AJAX requests
+header('Content-Type: application/json');
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    
+    // Get QR code from POST
+    $qrCode = isset($_POST['qr_code']) ? trim($_POST['qr_code']) : '';
+    
+    if (empty($qrCode)) {
+        echo json_encode([
+            'success' => false, 
+            'message' => 'QR Code is required'
+        ]);
+        exit();
+    }
+    
+    // Don't restrict QR code format - it can be any string
+    // Just remove any dangerous characters
+    $qrCode = preg_replace('/[^A-Za-z0-9\-_]/', '', $qrCode);
+    
+    if (empty($qrCode)) {
+        echo json_encode([
+            'success' => false, 
+            'message' => 'Invalid QR Code format'
+        ]);
+        exit();
+    }
+    
+    $studentID = null;
+    $timeIn = date("Y-m-d H:i:s");
+    
+    try {
         // Get student ID from QR code
-        try {
-            $selectStmt = $conn->prepare("SELECT tbl_student_id FROM tbl_student WHERE generated_code = :generated_code");
-            $selectStmt->bindParam(":generated_code", $qrCode, PDO::PARAM_STR);
+        $selectStmt = $conn->prepare("
+            SELECT tbl_student_id, student_name, course_section 
+            FROM tbl_student 
+            WHERE generated_code = :generated_code OR qr_code = :qr_code
+        ");
+        $selectStmt->bindParam(":generated_code", $qrCode, PDO::PARAM_STR);
+        $selectStmt->bindParam(":qr_code", $qrCode, PDO::PARAM_STR);
+        
+        if ($selectStmt->execute()) {
+            $result = $selectStmt->fetch(PDO::FETCH_ASSOC);
             
-            if ($selectStmt->execute()) {
-                $result = $selectStmt->fetch(PDO::FETCH_ASSOC);
+            if ($result) {
+                $studentID = $result["tbl_student_id"];
+                $studentName = $result["student_name"];
+                $courseSection = $result["course_section"];
                 
-                if ($result) {
-                    $studentID = $result["tbl_student_id"];
-                    
-                    // Check if attendance already exists for today
-                    $checkStmt = $conn->prepare(
-                        "SELECT tbl_attendance_id FROM tbl_attendance 
-                         WHERE tbl_student_id = :student_id 
-                         AND DATE(time_in) = CURDATE() 
-                         LIMIT 1"
-                    );
-                    $checkStmt->bindParam(":student_id", $studentID, PDO::PARAM_INT);
-                    
-                    if ($checkStmt->execute() && $checkStmt->fetch()) {
-                        $_SESSION['error'] = "Attendance already recorded for today";
-                        header("Location: http://localhost/qr-code-attendance-system/index.php");
-                        exit();
-                    }
-                    
-                    // Insert new attendance record
-                    $insertStmt = $conn->prepare(
-                        "INSERT INTO tbl_attendance (tbl_student_id, time_in) 
-                         VALUES (:tbl_student_id, :time_in)"
-                    );
-                    
-                    $insertStmt->bindParam(":tbl_student_id", $studentID, PDO::PARAM_INT);
-                    $insertStmt->bindParam(":time_in", $timeIn, PDO::PARAM_STR);
-                    
-                    if ($insertStmt->execute()) {
-                        $_SESSION['success'] = "Attendance recorded successfully!";
-                        header("Location: http://localhost/qr-code-attendance-system/index.php");
-                        exit();
-                    } else {
-                        throw new Exception("Failed to insert attendance record");
-                    }
-                } else {
-                    $_SESSION['error'] = "No student found with this QR Code";
-                    header("Location: http://localhost/qr-code-attendance-system/index.php");
+                // Check if attendance already exists for today
+                $checkStmt = $conn->prepare("
+                    SELECT tbl_attendance_id, status 
+                    FROM tbl_attendance 
+                    WHERE tbl_student_id = :student_id 
+                    AND DATE(time_in) = CURDATE() 
+                    LIMIT 1
+                ");
+                $checkStmt->bindParam(":student_id", $studentID, PDO::PARAM_INT);
+                $checkStmt->execute();
+                $existingAttendance = $checkStmt->fetch(PDO::FETCH_ASSOC);
+                
+                if ($existingAttendance) {
+                    echo json_encode([
+                        'success' => false, 
+                        'message' => $studentName . ' already attended today',
+                        'status' => $existingAttendance['status']
+                    ]);
                     exit();
                 }
+                
+                // Determine status (8:00 AM cutoff)
+                $currentHour = (int)date('H');
+                $currentMinutes = (int)date('i');
+                $status = ($currentHour < 8 || ($currentHour == 8 && $currentMinutes == 0)) ? 'On Time' : 'Late';
+                
+                // Insert new attendance record
+                $insertStmt = $conn->prepare("
+                    INSERT INTO tbl_attendance (tbl_student_id, time_in, status) 
+                    VALUES (:tbl_student_id, :time_in, :status)
+                ");
+                
+                $insertStmt->bindParam(":tbl_student_id", $studentID, PDO::PARAM_INT);
+                $insertStmt->bindParam(":time_in", $timeIn, PDO::PARAM_STR);
+                $insertStmt->bindParam(":status", $status, PDO::PARAM_STR);
+                
+                if ($insertStmt->execute()) {
+                    echo json_encode([
+                        'success' => true,
+                        'message' => $studentName . ' marked as ' . $status,
+                        'student_name' => $studentName,
+                        'course_section' => $courseSection,
+                        'status' => $status,
+                        'time' => date('h:i A', strtotime($timeIn))
+                    ]);
+                    exit();
+                } else {
+                    throw new Exception("Failed to insert attendance record");
+                }
             } else {
-                throw new Exception("Database query failed");
+                echo json_encode([
+                    'success' => false, 
+                    'message' => 'No student found with this QR Code: ' . $qrCode
+                ]);
+                exit();
             }
-        } catch (PDOException $e) {
-            error_log("Database Error: " . $e->getMessage());
-            $_SESSION['error'] = "System error. Please try again.";
-            header("Location: http://localhost/qr-code-attendance-system/index.php");
-            exit();
-        } catch (Exception $e) {
-            error_log("Error: " . $e->getMessage());
-            $_SESSION['error'] = $e->getMessage();
-            header("Location: http://localhost/qr-code-attendance-system/index.php");
-            exit();
+        } else {
+            throw new Exception("Database query failed");
         }
-    } else {
-        $_SESSION['error'] = "QR Code is required";
-        header("Location: http://localhost/qr-code-attendance-system/index.php");
+    } catch (PDOException $e) {
+        error_log("Database Error in add-attendance: " . $e->getMessage());
+        echo json_encode([
+            'success' => false, 
+            'message' => 'Database error. Please try again.'
+        ]);
+        exit();
+    } catch (Exception $e) {
+        error_log("Error in add-attendance: " . $e->getMessage());
+        echo json_encode([
+            'success' => false, 
+            'message' => $e->getMessage()
+        ]);
         exit();
     }
 } else {
-    $_SESSION['error'] = "Invalid request method";
-    header("Location: http://localhost/qr-code-attendance-system/index.php");
+    echo json_encode([
+        'success' => false, 
+        'message' => 'Invalid request method'
+    ]);
     exit();
 }
 ?>

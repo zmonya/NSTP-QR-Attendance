@@ -7,6 +7,10 @@ if (!isset($_SESSION['user_id'])) {
 
 date_default_timezone_set('Asia/Manila');
 include ('./conn/conn.php');
+
+// Get current admin info
+$admin_id = $_SESSION['user_id'];
+$admin_role = $_SESSION['role'] ?? 'admin';
 ?>
 
 <!DOCTYPE html>
@@ -33,13 +37,42 @@ include ('./conn/conn.php');
             margin-bottom: 20px;
         }
         
-        .scanner-video {
+        #qr-reader {
             width: 100%;
-            height: 350px;
-            background: #000;
             border-radius: 10px;
             border: 3px solid #007bff;
+            overflow: hidden;
+            display: none;
+            background: #000;
+        }
+        
+        #qr-reader__scan_region {
+            background: #000;
+            min-height: 350px;
+        }
+        
+        #qr-reader__scan_region video {
+            width: 100%;
+            height: auto;
             object-fit: cover;
+        }
+        
+        #qr-reader__dashboard {
+            background: #f8f9fa;
+            padding: 10px;
+        }
+        
+        .scanner-placeholder {
+            width: 100%;
+            height: 350px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 10px;
+            border: 3px solid #007bff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            text-align: center;
         }
         
         .qr-detected-box {
@@ -74,21 +107,7 @@ include ('./conn/conn.php');
             overflow-y: auto;
         }
         
-        .stat-card {
-            border-radius: 10px;
-            color: white;
-            padding: 15px;
-            margin-bottom: 15px;
-        }
-        
-        .stat-icon {
-            font-size: 2.5rem;
-            opacity: 0.8;
-        }
-        
         .scanner-status {
-            background: #fff3cd;
-            border: 1px solid #ffeaa7;
             border-radius: 8px;
             padding: 12px;
             margin-bottom: 15px;
@@ -106,14 +125,65 @@ include ('./conn/conn.php');
         
         .empty-state {
             text-align: center;
-            padding: 40px 20px;
+            padding: 60px 20px;
             color: #6c757d;
+            width: 100%;
         }
         
         .empty-state i {
             font-size: 4rem;
             margin-bottom: 20px;
             opacity: 0.5;
+        }
+        
+        .invalid-qr {
+            border-color: #dc3545 !important;
+            transition: border-color 0.3s ease;
+        }
+        
+        select#qr-reader__camera_selection {
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            padding: 5px;
+            margin-left: 10px;
+        }
+        
+        button#qr-reader__dashboard_button {
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 6px 12px;
+            margin-left: 10px;
+            cursor: pointer;
+        }
+        
+        button#qr-reader__dashboard_button:hover {
+            background: #0069d9;
+        }
+        
+        .student-info {
+            font-size: 1.1em;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+        
+        .attendance-time {
+            font-size: 0.9em;
+            opacity: 0.9;
+        }
+        
+        /* DataTables custom styles */
+        .dataTables_wrapper .dataTables_paginate .paginate_button {
+            padding: 0.5em 1em;
+        }
+        
+        .dataTables_empty {
+            display: none;
+        }
+        
+        .no-records-container {
+            width: 100%;
         }
     </style>
 </head>
@@ -136,7 +206,6 @@ include ('./conn/conn.php');
             </li>
         </ul>
         
-        <!-- Right navbar links -->
         <ul class="navbar-nav ml-auto">
             <li class="nav-item">
                 <a class="nav-link" href="#" data-toggle="tooltip" title="Manila Time">
@@ -189,9 +258,9 @@ include ('./conn/conn.php');
                 <!-- Scanner Status Alert -->
                 <div class="row">
                     <div class="col-12">
-                        <div class="scanner-status" id="scannerStatus">
+                        <div class="scanner-status alert alert-info" id="scannerStatus">
                             <i class="fas fa-info-circle mr-2"></i>
-                            <span id="statusMessage">Scanner ready</span>
+                            <span id="statusMessage">Scanner ready. Click "Start Scanner" to begin.</span>
                         </div>
                     </div>
                 </div>
@@ -218,57 +287,70 @@ include ('./conn/conn.php');
                                         <p class="text-muted">Ensure good lighting for better scanning</p>
                                     </div>
                                     
-                                    <div class="text-center mb-3">
-                                        <video id="scannerVideo" class="scanner-video" playsinline></video>
-                                    </div>
+                                    <!-- QR Reader Container -->
+                                    <div id="qr-reader"></div>
                                     
-                                    <!-- Camera Selection -->
-                                    <div class="form-group mb-3" id="cameraSelectGroup" style="display: none;">
-                                        <label for="cameraSelect">
-                                            <i class="fas fa-video mr-2"></i>Select Camera
-                                        </label>
-                                        <select class="form-control select2" id="cameraSelect" onchange="changeCamera()">
-                                            <option value="">Loading cameras...</option>
-                                        </select>
+                                    <!-- Placeholder when scanner is off -->
+                                    <div id="scannerPlaceholder" class="scanner-placeholder">
+                                        <div>
+                                            <i class="fas fa-qrcode fa-4x mb-3" style="opacity: 0.8;"></i>
+                                            <h5>Scanner is Off</h5>
+                                            <p class="mb-0">Click "Start Scanner" to begin</p>
+                                        </div>
                                     </div>
                                     
                                     <!-- Camera Controls -->
-                                    <div class="camera-controls">
+                                    <div class="camera-controls mt-3">
                                         <button class="btn btn-success" onclick="startScanner()" id="startBtn">
                                             <i class="fas fa-play mr-2"></i>Start Scanner
                                         </button>
                                         <button class="btn btn-danger" onclick="stopScanner()" id="stopBtn" style="display: none;">
                                             <i class="fas fa-stop mr-2"></i>Stop Scanner
                                         </button>
-                                        <button class="btn btn-info" onclick="switchCamera()" id="switchBtn" style="display: none;">
-                                            <i class="fas fa-sync-alt mr-2"></i>Switch Camera
-                                        </button>
                                     </div>
                                 </div>
-                                
+                                    
                                 <!-- QR Detected Section -->
                                 <div id="qrDetectedSection" style="display: none;">
                                     <div class="qr-detected-box text-center">
                                         <i class="fas fa-check-circle fa-3x mb-3"></i>
                                         <h4>QR Code Detected!</h4>
-                                        <p class="mb-0">Student QR code successfully scanned</p>
+                                        <div class="student-info" id="studentInfo">Student QR code successfully scanned</div>
                                         
                                         <div class="qr-content-box">
-                                            <small>Student ID:</small>
+                                            <small>QR Code:</small>
                                             <div id="qrContent" class="font-weight-bold"></div>
                                         </div>
                                         
-                                        <form action="./endpoint/add-attendance.php" method="POST">
+                                        <form action="./endpoint/add-attendance.php" method="POST" id="attendanceForm">
                                             <input type="hidden" id="detectedQrCode" name="qr_code">
                                             <div class="mt-4">
                                                 <button type="submit" class="btn btn-light btn-lg mr-2">
-                                                    <i class="fas fa-check mr-2"></i>Confirm
+                                                    <i class="fas fa-check mr-2"></i>Confirm Attendance
                                                 </button>
                                                 <button type="button" class="btn btn-outline-light" onclick="resumeScanner()">
                                                     <i class="fas fa-redo mr-2"></i>Scan Again
                                                 </button>
                                             </div>
                                         </form>
+                                    </div>
+                                </div>
+                                
+                                <!-- Attendance Success Section -->
+                                <div id="attendanceSuccessSection" style="display: none;">
+                                    <div class="qr-detected-box text-center" style="background: linear-gradient(135deg, #28a745 0%, #218838 100%);">
+                                        <i class="fas fa-check-circle fa-3x mb-3"></i>
+                                        <h4>Attendance Recorded!</h4>
+                                        <div class="student-info" id="successStudentInfo"></div>
+                                        <div class="attendance-time" id="successTime"></div>
+                                        <div class="mt-3">
+                                            <span class="badge badge-light" id="successStatus"></span>
+                                        </div>
+                                        <div class="mt-4">
+                                            <button type="button" class="btn btn-light btn-lg" onclick="resumeScanner()">
+                                                <i class="fas fa-qrcode mr-2"></i>Scan Next Student
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
                                 
@@ -292,8 +374,20 @@ include ('./conn/conn.php');
                                         <span class="info-box-text">Total Present Today</span>
                                         <span class="info-box-number">
                                             <?php
-                                            $stmt = $conn->prepare("SELECT COUNT(*) FROM tbl_attendance WHERE DATE(time_in) = CURDATE()");
-                                            $stmt->execute();
+                                            if ($admin_role == 'super_admin') {
+                                                $stmt = $conn->prepare("SELECT COUNT(*) FROM tbl_attendance WHERE DATE(time_in) = CURDATE()");
+                                                $stmt->execute();
+                                            } else {
+                                                $stmt = $conn->prepare("
+                                                    SELECT COUNT(*) 
+                                                    FROM tbl_attendance a
+                                                    INNER JOIN tbl_student s ON a.tbl_student_id = s.tbl_student_id
+                                                    LEFT JOIN tbl_admin_sections ads ON s.course_section = ads.course_section
+                                                    WHERE DATE(a.time_in) = CURDATE() 
+                                                    AND (s.created_by = ? OR ads.user_id = ?)
+                                                ");
+                                                $stmt->execute([$admin_id, $admin_id]);
+                                            }
                                             echo $stmt->fetchColumn();
                                             ?>
                                         </span>
@@ -310,13 +404,26 @@ include ('./conn/conn.php');
                                         <span class="info-box-text">On Time</span>
                                         <span class="info-box-number">
                                             <?php
-                                            $stmt = $conn->prepare("
-                                                SELECT COUNT(*) 
-                                                FROM tbl_attendance 
-                                                WHERE DATE(time_in) = CURDATE() 
-                                                AND TIME(time_in) <= '08:00:00'
-                                            ");
-                                            $stmt->execute();
+                                            if ($admin_role == 'super_admin') {
+                                                $stmt = $conn->prepare("
+                                                    SELECT COUNT(*) 
+                                                    FROM tbl_attendance 
+                                                    WHERE DATE(time_in) = CURDATE() 
+                                                    AND TIME(time_in) <= '08:00:00'
+                                                ");
+                                                $stmt->execute();
+                                            } else {
+                                                $stmt = $conn->prepare("
+                                                    SELECT COUNT(*) 
+                                                    FROM tbl_attendance a
+                                                    INNER JOIN tbl_student s ON a.tbl_student_id = s.tbl_student_id
+                                                    LEFT JOIN tbl_admin_sections ads ON s.course_section = ads.course_section
+                                                    WHERE DATE(a.time_in) = CURDATE() 
+                                                    AND TIME(a.time_in) <= '08:00:00'
+                                                    AND (s.created_by = ? OR ads.user_id = ?)
+                                                ");
+                                                $stmt->execute([$admin_id, $admin_id]);
+                                            }
                                             echo $stmt->fetchColumn();
                                             ?>
                                         </span>
@@ -333,13 +440,26 @@ include ('./conn/conn.php');
                                         <span class="info-box-text">Late</span>
                                         <span class="info-box-number">
                                             <?php
-                                            $stmt = $conn->prepare("
-                                                SELECT COUNT(*) 
-                                                FROM tbl_attendance 
-                                                WHERE DATE(time_in) = CURDATE() 
-                                                AND TIME(time_in) > '08:00:00'
-                                            ");
-                                            $stmt->execute();
+                                            if ($admin_role == 'super_admin') {
+                                                $stmt = $conn->prepare("
+                                                    SELECT COUNT(*) 
+                                                    FROM tbl_attendance 
+                                                    WHERE DATE(time_in) = CURDATE() 
+                                                    AND TIME(time_in) > '08:00:00'
+                                                ");
+                                                $stmt->execute();
+                                            } else {
+                                                $stmt = $conn->prepare("
+                                                    SELECT COUNT(*) 
+                                                    FROM tbl_attendance a
+                                                    INNER JOIN tbl_student s ON a.tbl_student_id = s.tbl_student_id
+                                                    LEFT JOIN tbl_admin_sections ads ON s.course_section = ads.course_section
+                                                    WHERE DATE(a.time_in) = CURDATE() 
+                                                    AND TIME(a.time_in) > '08:00:00'
+                                                    AND (s.created_by = ? OR ads.user_id = ?)
+                                                ");
+                                                $stmt->execute([$admin_id, $admin_id]);
+                                            }
                                             echo $stmt->fetchColumn();
                                             ?>
                                         </span>
@@ -377,6 +497,32 @@ include ('./conn/conn.php');
                                 </div>
                             </div>
                             <div class="card-body p-0">
+                                <?php
+                                // Fetch attendance records
+                                if ($admin_role == 'super_admin') {
+                                    $stmt = $conn->prepare("
+                                        SELECT a.*, s.student_name, s.course_section 
+                                        FROM tbl_attendance a 
+                                        LEFT JOIN tbl_student s ON s.tbl_student_id = a.tbl_student_id 
+                                        WHERE DATE(a.time_in) = CURDATE()
+                                        ORDER BY a.time_in DESC
+                                    ");
+                                    $stmt->execute();
+                                } else {
+                                    $stmt = $conn->prepare("
+                                        SELECT a.*, s.student_name, s.course_section 
+                                        FROM tbl_attendance a 
+                                        INNER JOIN tbl_student s ON s.tbl_student_id = a.tbl_student_id
+                                        LEFT JOIN tbl_admin_sections ads ON s.course_section = ads.course_section
+                                        WHERE DATE(a.time_in) = CURDATE() 
+                                        AND (s.created_by = ? OR ads.user_id = ?)
+                                        ORDER BY a.time_in DESC
+                                    ");
+                                    $stmt->execute([$admin_id, $admin_id]);
+                                }
+                                $attendanceRecords = $stmt->fetchAll();
+                                ?>
+                                
                                 <div class="table-responsive attendance-card">
                                     <table class="table table-hover" id="attendanceTable">
                                         <thead>
@@ -390,70 +536,64 @@ include ('./conn/conn.php');
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            <?php
-                                            $stmt = $conn->prepare("
-                                                SELECT a.*, s.student_name, s.course_section 
-                                                FROM tbl_attendance a 
-                                                LEFT JOIN tbl_student s ON s.tbl_student_id = a.tbl_student_id 
-                                                WHERE DATE(a.time_in) = CURDATE()
-                                                ORDER BY a.time_in DESC
-                                            ");
-                                            $stmt->execute();
-                                            $attendanceRecords = $stmt->fetchAll();
-                                            $counter = 1;
-                                            
-                                            if (count($attendanceRecords) > 0):
-                                                foreach ($attendanceRecords as $record):
+                                            <?php if (count($attendanceRecords) > 0): ?>
+                                                <?php $counter = 1; ?>
+                                                <?php foreach ($attendanceRecords as $record): ?>
+                                                    <?php
                                                     $attendanceID = $record["tbl_attendance_id"];
                                                     $studentName = $record["student_name"];
                                                     $studentCourse = $record["course_section"];
                                                     $timeIn = $record["time_in"];
+                                                    $status = $record["status"] ?? '';
                                                     
-                                                    // Determine status
-                                                    $checkTime = new DateTime($timeIn);
-                                                    $lateTime = new DateTime($checkTime->format('Y-m-d') . ' 08:00:00');
-                                                    $isLate = $checkTime > $lateTime;
-                                                    $statusClass = $isLate ? 'warning' : 'success';
-                                                    $statusText = $isLate ? 'Late' : 'On Time';
-                                            ?>
-                                            <tr>
-                                                <td><?= $counter++; ?></td>
-                                                <td>
-                                                    <strong><?= htmlspecialchars($studentName) ?></strong>
-                                                </td>
-                                                <td><?= htmlspecialchars($studentCourse) ?></td>
-                                                <td>
-                                                    <div><?= date('h:i A', strtotime($timeIn)) ?></div>
-                                                    <small class="text-muted"><?= date('M d, Y', strtotime($timeIn)) ?></small>
-                                                </td>
-                                                <td>
-                                                    <span class="badge badge-<?= $statusClass ?> status-badge">
-                                                        <?= $statusText ?>
-                                                    </span>
-                                                </td>
-                                                <td>
-                                                    <button class="btn btn-danger btn-sm" onclick="deleteAttendance(<?= $attendanceID ?>)" title="Delete">
-                                                        <i class="fas fa-trash"></i>
-                                                    </button>
-                                                </td>
-                                            </tr>
-                                            <?php endforeach; ?>
-                                            <?php else: ?>
-                                            <tr>
-                                                <td colspan="6">
-                                                    <div class="empty-state">
-                                                        <i class="fas fa-clipboard-list"></i>
-                                                        <h5>No attendance records for today</h5>
-                                                        <p class="text-muted">Start scanning QR codes to record attendance</p>
-                                                        <button class="btn btn-primary mt-2" onclick="startScanner()">
-                                                            <i class="fas fa-qrcode mr-2"></i>Start Scanner
-                                                        </button>
-                                                    </div>
-                                                </td>
-                                            </tr>
+                                                    // FIXED: Properly handle DateTime comparison
+                                                    $isLate = false;
+                                                    if (!empty($timeIn)) {
+                                                        $timeObj = strtotime($timeIn);
+                                                        $cutoff = strtotime(date('Y-m-d', $timeObj) . ' 08:00:00');
+                                                        $isLate = $timeObj > $cutoff;
+                                                    }
+                                                    
+                                                    $statusClass = (strtolower($status) == 'late' || $isLate) ? 'warning' : 'success';
+                                                    $statusText = $status ?: ($isLate ? 'Late' : 'On Time');
+                                                    ?>
+                                                    <tr>
+                                                        <td><?= $counter++ ?></td>
+                                                        <td>
+                                                            <strong><?= htmlspecialchars($studentName) ?></strong>
+                                                        </td>
+                                                        <td><?= htmlspecialchars($studentCourse) ?></td>
+                                                        <td>
+                                                            <div><?= date('h:i A', strtotime($timeIn)) ?></div>
+                                                            <small class="text-muted"><?= date('M d, Y', strtotime($timeIn)) ?></small>
+                                                        </td>
+                                                        <td>
+                                                            <span class="badge badge-<?= $statusClass ?> status-badge">
+                                                                <?= $statusText ?>
+                                                            </span>
+                                                        </td>
+                                                        <td>
+                                                            <button class="btn btn-danger btn-sm" onclick="deleteAttendance(<?= $attendanceID ?>)" title="Delete">
+                                                                <i class="fas fa-trash"></i>
+                                                            </button>
+                                                        </td>
+                                                    </tr>
+                                                <?php endforeach; ?>
                                             <?php endif; ?>
                                         </tbody>
                                     </table>
+                                    
+                                    <?php if (count($attendanceRecords) === 0): ?>
+                                        <!-- Empty state outside the table to avoid DataTables column count issues -->
+                                        <div class="empty-state w-100">
+                                            <i class="fas fa-clipboard-list"></i>
+                                            <h5>No attendance records for today</h5>
+                                            <p class="text-muted">Start scanning QR codes to record attendance</p>
+                                            <button class="btn btn-primary mt-2" onclick="startScanner()">
+                                                <i class="fas fa-qrcode mr-2"></i>Start Scanner
+                                            </button>
+                                        </div>
+                                    <?php endif; ?>
                                 </div>
                             </div>
                             <div class="card-footer">
@@ -507,15 +647,38 @@ include ('./conn/conn.php');
                         <select class="form-control select2" id="studentSelect" name="student_id" style="width: 100%;" required>
                             <option value="">-- Select a student --</option>
                             <?php
-                            $stmt = $conn->prepare("SELECT tbl_student_id, student_name, course_section FROM tbl_student ORDER BY student_name");
-                            $stmt->execute();
+                            if ($admin_role == 'super_admin') {
+                                $stmt = $conn->prepare("
+                                    SELECT tbl_student_id, student_name, course_section 
+                                    FROM tbl_student 
+                                    ORDER BY student_name
+                                ");
+                                $stmt->execute();
+                            } else {
+                                $stmt = $conn->prepare("
+                                    SELECT DISTINCT s.tbl_student_id, s.student_name, s.course_section 
+                                    FROM tbl_student s
+                                    LEFT JOIN tbl_admin_sections ads ON s.course_section = ads.course_section
+                                    WHERE s.created_by = ? 
+                                    OR ads.user_id = ?
+                                    ORDER BY s.student_name
+                                ");
+                                $stmt->execute([$admin_id, $admin_id]);
+                            }
                             $students = $stmt->fetchAll();
-                            foreach ($students as $student):
+                            
+                            if (count($students) > 0):
+                                foreach ($students as $student):
                             ?>
                             <option value="<?= $student['tbl_student_id'] ?>">
                                 <?= htmlspecialchars($student['student_name']) ?> - <?= htmlspecialchars($student['course_section']) ?>
                             </option>
-                            <?php endforeach; ?>
+                            <?php 
+                                endforeach;
+                            else:
+                            ?>
+                            <option value="" disabled>No students found in your section</option>
+                            <?php endif; ?>
                         </select>
                     </div>
                     <div class="form-group">
@@ -555,41 +718,77 @@ include ('./conn/conn.php');
 <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
 <script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap4.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/instascan@2.0.0/dist/instascan.min.js"></script>
+
+<!-- HTML5 QR Code Scanner Library -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
 
 <script>
     // Global variables
-    let scanner = null;
+    let html5QrcodeScanner = null;
     let isScanning = false;
-    let cameras = [];
-    let currentCameraIndex = 0;
+    const adminId = <?= $admin_id ?>;
+    const adminRole = '<?= $admin_role ?>';
     
-    // Initialize Select2
+    // Initialize on document ready
     $(document).ready(function() {
+        console.log('Document ready - initializing...');
+        
+        // Initialize Select2
         $('.select2').select2({
             theme: 'bootstrap4',
             placeholder: 'Select an option',
             allowClear: true
         });
         
-        // Initialize time display
+        // Update time display
         updateTime();
         setInterval(updateTime, 1000);
         
-        // Initialize scanner
-        initScanner();
+        // Initialize DataTable ONLY if there are records
+        <?php if (count($attendanceRecords) > 0): ?>
+        try {
+            $('#attendanceTable').DataTable({
+                "paging": true,
+                "lengthChange": false,
+                "searching": true,
+                "ordering": true,
+                "info": true,
+                "autoWidth": false,
+                "responsive": true,
+                "order": [[3, 'desc']],
+                "columnDefs": [
+                    { "orderable": false, "targets": 5 } // Make Actions column non-sortable
+                ],
+                "language": {
+                    "emptyTable": "No attendance records available"
+                }
+            });
+            console.log('DataTable initialized successfully');
+        } catch (e) {
+            console.error('DataTable initialization error:', e);
+        }
+        <?php else: ?>
+        console.log('No records found - DataTable not initialized');
+        // Add a class to style the empty table
+        $('#attendanceTable').addClass('table-empty');
+        <?php endif; ?>
         
-        // Initialize DataTable
-        $('#attendanceTable').DataTable({
-            "paging": true,
-            "lengthChange": false,
-            "searching": true,
-            "ordering": true,
-            "info": true,
-            "autoWidth": false,
-            "responsive": true,
-            "order": [[3, 'desc']]
-        });
+        // Initialize UI state - scanner OFF by default
+        $('#qr-reader').hide();
+        $('#scannerPlaceholder').show();
+        $('#startBtn').show();
+        $('#stopBtn').hide();
+        $('#qrDetectedSection').hide();
+        $('#attendanceSuccessSection').hide();
+        
+        // Check if library is loaded
+        if (typeof Html5QrcodeScanner === 'undefined') {
+            console.error('Html5QrcodeScanner is not defined! Library failed to load.');
+            showStatus('danger', 'QR Scanner library failed to load. Please refresh the page.');
+        } else {
+            console.log('Html5QrcodeScanner library loaded successfully!');
+            showStatus('info', 'Scanner ready. Click "Start Scanner" to begin.');
+        }
     });
     
     // Update time display
@@ -603,168 +802,231 @@ include ('./conn/conn.php');
         $('#current-time').text(`${formattedHours}:${minutes} ${ampm}`);
     }
     
-    // Initialize scanner
-    function initScanner() {
-        showStatus('info', 'Initializing scanner...');
-        
-        Instascan.Camera.getCameras()
-            .then(function(availableCameras) {
-                cameras = availableCameras;
-                
-                if (cameras.length > 0) {
-                    // Populate camera select
-                    const cameraSelect = $('#cameraSelect');
-                    cameraSelect.empty();
-                    
-                    cameras.forEach((camera, index) => {
-                        cameraSelect.append(
-                            $('<option></option>').val(index).text(camera.name || `Camera ${index + 1}`)
-                        );
-                    });
-                    
-                    $('#cameraSelectGroup').show();
-                    cameraSelect.select2({
-                        theme: 'bootstrap4',
-                        placeholder: 'Select camera',
-                        minimumResultsForSearch: -1
-                    });
-                    
-                    // Auto-select back camera if available
-                    const backCameraIndex = cameras.findIndex(camera => 
-                        camera.name.toLowerCase().includes('back'));
-                    if (backCameraIndex !== -1) {
-                        currentCameraIndex = backCameraIndex;
-                        cameraSelect.val(backCameraIndex).trigger('change');
-                    }
-                    
-                    showStatus('success', 'Scanner ready. Click "Start Scanner" to begin.');
-                } else {
-                    showStatus('danger', 'No cameras found. Please connect a camera device.');
-                }
-            })
-            .catch(function(error) {
-                console.error('Camera initialization error:', error);
-                showStatus('danger', `Camera error: ${error.message}`);
-            });
-    }
-    
     // Start scanner
     function startScanner() {
-        if (isScanning || cameras.length === 0) return;
+        console.log('Start scanner clicked');
         
-        if (scanner) {
-            scanner.stop();
-            scanner = null;
+        if (typeof Html5QrcodeScanner === 'undefined') {
+            showStatus('danger', 'QR Scanner library not loaded. Please refresh the page.');
+            return;
         }
         
-        scanner = new Instascan.Scanner({ 
-            video: document.getElementById('scannerVideo'),
-            mirror: false,
-            captureImage: false,
-            backgroundScan: true,
-            refractoryPeriod: 5000,
-            scanPeriod: 1
-        });
+        if (isScanning) {
+            showStatus('info', 'Scanner is already running');
+            return;
+        }
         
-        scanner.addListener('scan', function(content) {
-            console.log('QR Code scanned:', content);
-            handleScannedQR(content);
-        });
+        $('#scannerPlaceholder').hide();
+        $('#qr-reader').show();
+        showStatus('info', 'Initializing camera...');
         
-        scanner.start(cameras[currentCameraIndex])
-            .then(() => {
-                isScanning = true;
-                $('#startBtn').hide();
-                $('#stopBtn').show();
-                $('#switchBtn').show();
-                showStatus('success', 'Scanner active - Ready to scan QR codes');
-            })
-            .catch(error => {
-                console.error('Scanner start error:', error);
-                showStatus('danger', `Failed to start scanner: ${error.message}`);
-            });
+        try {
+            if (html5QrcodeScanner) {
+                try {
+                    html5QrcodeScanner.clear();
+                } catch (e) {
+                    console.log('Error clearing existing scanner:', e);
+                }
+                html5QrcodeScanner = null;
+            }
+            
+            html5QrcodeScanner = new Html5QrcodeScanner(
+                "qr-reader", 
+                { 
+                    fps: 10, 
+                    qrbox: { width: 250, height: 250 },
+                    rememberLastUsedCamera: true,
+                    showTorchButtonIfSupported: true,
+                    aspectRatio: 1.0,
+                    supportedScanTypes: [Html5QrcodeScanType.SCAN_TYPE_CAMERA]
+                },
+                false
+            );
+            
+            html5QrcodeScanner.render(onScanSuccess, onScanError);
+            isScanning = true;
+            
+            $('#startBtn').hide();
+            $('#stopBtn').show();
+            showStatus('success', 'Scanner active - Position QR code within frame');
+            console.log('Scanner started successfully');
+            
+        } catch (error) {
+            console.error('Scanner start error:', error);
+            showStatus('danger', 'Failed to start scanner: ' + error.message);
+            
+            $('#qr-reader').hide();
+            $('#scannerPlaceholder').show();
+            $('#startBtn').show();
+            $('#stopBtn').hide();
+            isScanning = false;
+        }
     }
     
     // Stop scanner
     function stopScanner() {
-        if (scanner && isScanning) {
-            scanner.stop();
-            isScanning = false;
-            $('#startBtn').show();
-            $('#stopBtn').hide();
-            showStatus('info', 'Scanner stopped');
-        }
-    }
-    
-    // Switch camera
-    function switchCamera() {
-        if (cameras.length < 2) {
-            showStatus('warning', 'Only one camera available');
-            return;
-        }
+        console.log('Stop scanner clicked');
         
-        currentCameraIndex = (currentCameraIndex + 1) % cameras.length;
-        $('#cameraSelect').val(currentCameraIndex).trigger('change');
-        
-        if (isScanning) {
-            scanner.stop().then(() => {
-                scanner.start(cameras[currentCameraIndex]);
-            });
-        }
-    }
-    
-    // Change camera from dropdown
-    function changeCamera() {
-        const selectedIndex = parseInt($('#cameraSelect').val());
-        if (!isNaN(selectedIndex) && selectedIndex >= 0 && selectedIndex < cameras.length) {
-            currentCameraIndex = selectedIndex;
-            
-            if (isScanning) {
-                scanner.stop().then(() => {
-                    scanner.start(cameras[currentCameraIndex]);
-                });
+        if (html5QrcodeScanner) {
+            try {
+                html5QrcodeScanner.clear();
+                html5QrcodeScanner = null;
+                console.log('Scanner stopped successfully');
+            } catch (error) {
+                console.error('Error clearing scanner:', error);
             }
         }
+        
+        isScanning = false;
+        
+        $('#qr-reader').hide();
+        $('#scannerPlaceholder').show();
+        $('#startBtn').show();
+        $('#stopBtn').hide();
+        showStatus('info', 'Scanner stopped');
     }
     
-    // Handle scanned QR code
-    function handleScannedQR(content) {
-        if (!content || content.trim() === '') {
-            showStatus('warning', 'Invalid QR code content');
-            return;
+    // Handle successful scan
+    function onScanSuccess(decodedText, decodedResult) {
+        console.log('QR Code scanned:', decodedText);
+        
+        if (html5QrcodeScanner) {
+            try {
+                html5QrcodeScanner.pause();
+                console.log('Scanner paused');
+            } catch (error) {
+                console.error('Error pausing scanner:', error);
+            }
         }
         
-        // Basic validation (adjust according to your QR format)
-        if (!/^[A-Za-z0-9\-_]+$/.test(content)) {
-            showStatus('warning', 'Invalid QR code format');
-            return;
-        }
-        
-        // Show success UI
-        $('#detectedQrCode').val(content);
-        $('#qrContent').text(content);
-        
-        // Play success sound
         playSuccessSound();
+        showStatus('success', 'QR Code detected! Validating...');
         
-        // Show QR detected section
-        $('#scannerSection').hide();
-        $('#qrDetectedSection').show();
-        
-        // Show notification
-        showToast('success', 'QR Code Detected!', 'Student QR code successfully scanned.');
-        
-        // Stop scanner
-        stopScanner();
+        // Validate student
+        $.ajax({
+            url: './endpoint/validate-student.php',
+            method: 'POST',
+            data: { 
+                qr_code: decodedText,
+                admin_id: adminId
+            },
+            dataType: 'json',
+            timeout: 10000,
+            success: function(response) {
+                console.log('Validation response:', response);
+                
+                if (response.valid) {
+                    // Show QR detected section with student info
+                    $('#detectedQrCode').val(decodedText);
+                    $('#qrContent').text(decodedText);
+                    $('#studentInfo').text(response.student_name + ' - ' + response.course_section);
+                    
+                    $('#scannerSection').hide();
+                    $('#qrDetectedSection').show();
+                    $('#attendanceSuccessSection').hide();
+                    
+                    stopScanner();
+                    showStatus('success', 'Student found: ' + response.student_name);
+                } else {
+                    console.warn('Student validation failed:', response.message);
+                    showStatus('warning', response.message || 'Student not found');
+                    showToast('error', 'Invalid QR', response.message || 'Student not found');
+                    
+                    $('#qr-reader').addClass('invalid-qr');
+                    setTimeout(() => $('#qr-reader').removeClass('invalid-qr'), 500);
+                    
+                    setTimeout(() => {
+                        resumeScanner();
+                    }, 2000);
+                }
+            },
+            error: function(xhr, status, error) {
+                console.error('Validation AJAX error:', status, error);
+                showStatus('danger', 'Error validating student. Please try again.');
+                showToast('error', 'Error', 'Network error. Please try again.');
+                
+                setTimeout(() => {
+                    resumeScanner();
+                }, 2000);
+            }
+        });
     }
+    
+    function onScanError(errorMessage) {
+        // Ignore scan errors
+    }
+    
+    // Handle attendance form submission
+    $('#attendanceForm').on('submit', function(e) {
+        e.preventDefault();
+        
+        const formData = $(this).serialize();
+        
+        $.ajax({
+            url: './endpoint/add-attendance.php',
+            method: 'POST',
+            data: formData,
+            dataType: 'json',
+            success: function(response) {
+                console.log('Attendance response:', response);
+                
+                if (response.success) {
+                    // Show success section
+                    $('#qrDetectedSection').hide();
+                    $('#attendanceSuccessSection').show();
+                    $('#successStudentInfo').text(response.student_name);
+                    $('#successTime').text('Time: ' + response.time);
+                    $('#successStatus').text(response.status).removeClass('badge-success badge-warning').addClass(
+                        response.status === 'On Time' ? 'badge-success' : 'badge-warning'
+                    );
+                    
+                    showToast('success', 'Success!', response.message);
+                    
+                    // Refresh the table
+                    setTimeout(() => {
+                        location.reload();
+                    }, 2000);
+                } else {
+                    showToast('error', 'Error', response.message);
+                    
+                    if (response.message.includes('already attended')) {
+                        setTimeout(() => {
+                            resumeScanner();
+                        }, 2000);
+                    }
+                }
+            },
+            error: function(xhr, status, error) {
+                console.error('Attendance submission error:', error);
+                showToast('error', 'Error', 'Network error. Please try again.');
+                
+                setTimeout(() => {
+                    resumeScanner();
+                }, 2000);
+            }
+        });
+    });
     
     // Resume scanning
     function resumeScanner() {
         $('#qrDetectedSection').hide();
+        $('#attendanceSuccessSection').hide();
         $('#scannerSection').show();
         $('#detectedQrCode').val('');
         $('#qrContent').text('');
-        startScanner();
+        $('#studentInfo').text('Student QR code successfully scanned');
+        
+        if (html5QrcodeScanner) {
+            try {
+                html5QrcodeScanner.resume();
+                console.log('Scanner resumed');
+            } catch (error) {
+                console.error('Error resuming scanner:', error);
+                startScanner();
+            }
+        } else {
+            startScanner();
+        }
     }
     
     // Delete attendance
@@ -801,43 +1063,16 @@ include ('./conn/conn.php');
         const statusDiv = $('#scannerStatus');
         const messageSpan = $('#statusMessage');
         
-        // Update classes based on type
         statusDiv.removeClass('alert-info alert-success alert-warning alert-danger');
+        statusDiv.addClass(`alert-${type}`);
         
-        switch(type) {
-            case 'success':
-                statusDiv.addClass('alert-success');
-                statusDiv.css('background', '#d4edda');
-                statusDiv.css('border-color', '#c3e6cb');
-                break;
-            case 'warning':
-                statusDiv.addClass('alert-warning');
-                statusDiv.css('background', '#fff3cd');
-                statusDiv.css('border-color', '#ffeaa7');
-                break;
-            case 'danger':
-                statusDiv.addClass('alert-danger');
-                statusDiv.css('background', '#f8d7da');
-                statusDiv.css('border-color', '#f5c6cb');
-                break;
-            default:
-                statusDiv.addClass('alert-info');
-                statusDiv.css('background', '#d1ecf1');
-                statusDiv.css('border-color', '#bee5eb');
-        }
+        let icon = 'info-circle';
+        if (type === 'success') icon = 'check-circle';
+        if (type === 'warning') icon = 'exclamation-triangle';
+        if (type === 'danger') icon = 'times-circle';
         
-        messageSpan.html(`<i class="fas fa-${getStatusIcon(type)} mr-2"></i>${message}`);
+        messageSpan.html(`<i class="fas fa-${icon} mr-2"></i>${message}`);
         statusDiv.show();
-    }
-    
-    // Get icon based on status type
-    function getStatusIcon(type) {
-        switch(type) {
-            case 'success': return 'check-circle';
-            case 'warning': return 'exclamation-triangle';
-            case 'danger': return 'times-circle';
-            default: return 'info-circle';
-        }
     }
     
     // Play success sound
@@ -865,13 +1100,13 @@ include ('./conn/conn.php');
     
     // Show toast notification
     function showToast(type, title, message) {
-        // Remove any existing toast
         $('.custom-toast').remove();
         
-        // Create toast HTML
+        const bgColor = type === 'success' ? 'bg-success' : type === 'error' ? 'bg-danger' : 'bg-info';
+        
         const toastHtml = `
             <div class="custom-toast toast fade show" role="alert" style="position: fixed; top: 20px; right: 20px; z-index: 9999; min-width: 300px;">
-                <div class="toast-header bg-${type} text-white">
+                <div class="toast-header ${bgColor} text-white">
                     <strong class="mr-auto">${title}</strong>
                     <button type="button" class="ml-2 mb-1 close text-white" onclick="$(this).closest('.toast').remove()">
                         <span>&times;</span>
@@ -883,10 +1118,8 @@ include ('./conn/conn.php');
             </div>
         `;
         
-        // Append to body
         $('body').append(toastHtml);
         
-        // Auto-remove after 3 seconds
         setTimeout(() => {
             $('.custom-toast').remove();
         }, 3000);
@@ -918,28 +1151,14 @@ include ('./conn/conn.php');
         });
     });
     
-    // Auto-refresh every 60 seconds if not scanning
-    setInterval(() => {
-        if (!isScanning && document.visibilityState === 'visible') {
-            const table = $('#attendanceTable').DataTable();
-            table.ajax.reload(null, false); // false means don't reset user paging/search
-        }
-    }, 60000);
-    
     // Clean up on page unload
     $(window).on('beforeunload', function() {
-        if (scanner && isScanning) {
-            scanner.stop();
-        }
-    });
-    
-    // Handle page visibility change
-    document.addEventListener('visibilitychange', function() {
-        if (document.hidden && scanner && isScanning) {
-            scanner.stop();
-            isScanning = false;
-            $('#startBtn').show();
-            $('#stopBtn').hide();
+        if (html5QrcodeScanner) {
+            try {
+                html5QrcodeScanner.clear();
+            } catch (error) {
+                console.error('Error during cleanup:', error);
+            }
         }
     });
 </script>
